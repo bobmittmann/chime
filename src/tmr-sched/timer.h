@@ -25,7 +25,7 @@ extern "C" {
  * Timer API
  *****************************************************************************/
 
-void timer_init(unsigned int tmr_id, void (* cb)(void *), void * param);
+bool timer_init(unsigned int tmr_id, void (* callback)(void *), void * param);
 
 void timer_set(unsigned int tmr_id, uint32_t timeout, uint32_t period);
 

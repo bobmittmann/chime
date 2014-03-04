@@ -31,10 +31,17 @@ struct tmr_sched sched;
 
 void timer_sched_isr(void)
 {
-	sched.clk++;
+	register uint32_t clk;
 
-	if ((sched.tmo_clk - sched.clk) < 0) {
-		DBG("wakeup...");
+	clk = sched.clk + 1;
+	sched.clk = clk;
+
+	DBG5("<%d>", (int32_t)(sched.tmo_clk - clk));
+
+	if ((int32_t)(sched.tmo_clk - clk) <= 0) {
+		DBG5("wakeup...");
+		/* move next timeout to infinity :) */
+		sched.tmo_clk = clk + INT32_MAX;
 		/* wakeup worker thread */
 		sched.wakeup = true;
 	}
@@ -45,13 +52,13 @@ void timer_default_callback(void * param)
 	DBG("...");
 }
 
-void timer_init(unsigned int tmr_id, void (* callback)(void *), void * param)
+bool timer_init(unsigned int tmr_id, void (* callback)(void *), void * param)
 {
 	struct timer * tmr;
 
 	if (tmr_id >= TIMER_SCHED_LENGHT) {
 		ERR("tmr_id >= TIMER_SCHED_LENGHT");
-		return;
+		return false;
 	}
 
 	tmr = &sched.tmr[tmr_id];
@@ -65,11 +72,23 @@ void timer_init(unsigned int tmr_id, void (* callback)(void *), void * param)
 		callback = timer_default_callback;
 	tmr->callback = callback;
 	tmr->param = param;
+
+	return true;
+}
+
+static inline void timer_reload(struct timer * tmr, uint32_t clk)
+{
+	tmr->clk = clk;
+	if ((int32_t)(clk - sched.tmo_clk) < 0) {
+		DBG("tmo=%d", clk);
+		sched.tmo_clk = clk;
+	}
 }
 
 void timer_set(unsigned int tmr_id, uint32_t timeout, uint32_t period)
 {
-	struct timer * tmr;
+	register uint32_t clk;
+	register struct timer * tmr;
 
 	if (tmr_id >= TIMER_SCHED_LENGHT) {
 		ERR("tmr_id >= TIMER_SCHED_LENGHT");
@@ -79,12 +98,16 @@ void timer_set(unsigned int tmr_id, uint32_t timeout, uint32_t period)
 	tmr = &sched.tmr[tmr_id];
 
 	tmr->itval = period;
-	tmr->clk = sched.clk + timeout;
 
 	DBG("tmr_id=%d tmo=%d itv=%d clk=%d", tmr_id, timeout, period, tmr->clk);
 
-	if ((tmr->clk - sched.tmo_clk) < 0)
-		sched.tmo_clk = tmr->clk;
+	clk = sched.clk + timeout;
+
+	tmr->clk = clk;
+	if ((int32_t)(clk - sched.tmo_clk) < 0) {
+		DBG5("tmo=%d", clk);
+		sched.tmo_clk = clk;
+	}
 
 	tmr->enabled = true;
 }
@@ -115,27 +138,74 @@ void timer_stop(unsigned int tmr_id)
 
 void timer_sched(void)
 {
-	int32_t dt_min = INT32_MAX;
-	struct timer * tmr;
-	uint32_t clk;
-	int32_t dt;
-	int i;
+	register int32_t dt_min = INT32_MAX;
+	register uint32_t ref_clk;
+	register int32_t dt;
+	register int i;
 
 	if (!sched.wakeup)
 		return;
 
 	sched.wakeup = false;
-	clk = sched.tmo_clk;
+	ref_clk = sched.clk;
+
+	for (i = 0; i < TIMER_SCHED_LENGHT; ++i) {
+		register struct timer * tmr = &sched.tmr[i];
+
+		if (!tmr->enabled) 
+			continue;
+
+		/* process timer */
+		if ((dt = (int32_t)(tmr->clk - ref_clk)) <= 0) {
+			if (tmr->itval) {
+				register uint32_t clk = tmr->clk + tmr->itval;
+				/* reschedule periodic timer */
+				tmr->clk = clk;
+				if ((int32_t)(clk - sched.tmo_clk) < 0) {
+					DBG5("tmo=%d", clk);
+					sched.tmo_clk = clk;
+				}
+
+			} else {
+				/* disable nonperiodic timer */
+				tmr->enabled = false;
+			}
+
+			tmr->callback(tmr->param);
+		} else {
+			if (dt < dt_min)
+				dt_min = dt;
+		}
+	}
+
+	ref_clk += dt_min;
+	if ((int32_t)(ref_clk - sched.tmo_clk) < 0) {
+		DBG5("tmo=%d", ref_clk);
+		sched.tmo_clk = ref_clk;
+	}
+}
+
+void __timer_sched(void)
+{
+	register int32_t dt_min = INT32_MAX;
+	register uint32_t ref_clk;
+	register int32_t dt;
+	register int i;
+
+	if (!sched.wakeup)
+		return;
+
+	sched.wakeup = false;
+	ref_clk = sched.clk;
 	
 	for (i = 0; i < TIMER_SCHED_LENGHT; ++i) {
-
-		tmr = &sched.tmr[i];
+		register struct timer * tmr = &sched.tmr[i];
 
 		while (tmr->enabled) {
-			if ((dt = tmr->clk - clk) <= 0) {
+			if ((dt = (int32_t)(tmr->clk - ref_clk)) <= 0) {
 				if (tmr->itval) {
 					/* reschedule a periodic clock */
-					tmr->clk = clk + tmr->itval;
+					tmr->clk = ref_clk + tmr->itval;
 				} else {
 					/* disable the timer */
 					tmr->enabled = false;
@@ -149,10 +219,12 @@ void timer_sched(void)
 		}
 	}
 
-	/* reschedule the clock */
-	sched.tmo_clk = clk + dt_min;
+	ref_clk += dt_min;
+	if ((int32_t)(ref_clk - sched.tmo_clk) < 0) {
+		DBG5("tmo=%d", ref_clk);
+		sched.tmo_clk = ref_clk;
+	}
 }
-
 
 void timer_sched_init(void)
 {
@@ -167,6 +239,8 @@ void timer_sched_init(void)
 	}
 
 	sched.wakeup = false;
+	sched.clk = 0;
+	sched.tmo_clk = INT32_MAX;
 
 	chime_tmr_init(7, timer_sched_isr, 1000, 1000);
 }

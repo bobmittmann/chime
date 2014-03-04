@@ -8,87 +8,61 @@
 #include "debug.h"
 #include "timer.h"
 
-void timer_0_cb(void * param)
-{
-	INF("<%d>", chime_cpu_id());
-}
+struct tmr_test {
+	unsigned int tmr_id;
+	uint32_t clk;
+	uint32_t clk_tmo;
+	uint32_t itv;
+	uint32_t cnt;
+};
 
-void timer_1_cb(void * param)
+void timer_test_callback(struct tmr_test * tst)
 {
-	INF("<%d> ...", chime_cpu_id());
-}
+	uint32_t clk;
 
-void timer_2_cb(void * param)
-{
-	INF("<%d> ...", chime_cpu_id());
-}
 
-void timer_3_cb(void * param)
-{
-	INF("<%d> ...", chime_cpu_id());
-}
+	clk = chime_cpu_cycles();
 
-void timer_4_cb(void * param)
-{
-	INF("<%d>", chime_cpu_id());
-}
+	INF("[%d]", tst->tmr_id);
 
-void timer_5_cb(void * param)
-{
-	INF("<%d> ...", chime_cpu_id());
-}
+	if (tst->clk_tmo != clk) {
+		fprintf(stderr, "[%d] Error!\n", tst->tmr_id);
+		fflush(stderr);
+	}
 
-void timer_6_cb(void * param)
-{
-	INF("<%d> ...", chime_cpu_id());
-}
-
-void timer_7_cb(void * param)
-{
-	INF("<%d> ...", chime_cpu_id());
+	tst->cnt++;
+	tst->clk = clk;
+	tst->clk_tmo = tst->clk + tst->itv;
 }
 
 void cpu0_reset(void)
 {
+	struct tmr_test tst[1024];
+	int n;
+	int i;
 
 	timer_sched_init();
 	tracef(T_INF, "CPU %d started...", chime_cpu_id());
 
-	timer_init(0, timer_0_cb, NULL);
-	timer_init(1, timer_1_cb, NULL);
-	timer_init(2, timer_2_cb, NULL);
-	timer_init(3, timer_3_cb, NULL);
-	timer_init(4, timer_4_cb, NULL);
-	timer_init(5, timer_5_cb, NULL);
-	timer_init(6, timer_6_cb, NULL);
-	timer_init(7, timer_7_cb, NULL);
-	timer_init(8, timer_0_cb, NULL);
-	timer_init(9, timer_1_cb, NULL);
-	timer_init(10, timer_2_cb, NULL);
-	timer_init(11, timer_3_cb, NULL);
-	timer_init(12, timer_4_cb, NULL);
-	timer_init(13, timer_5_cb, NULL);
-	timer_init(14, timer_6_cb, NULL);
-	timer_init(15, timer_7_cb, NULL);
-	timer_init(16, timer_0_cb, NULL);
+	for (i = 0; i < 1024; ++i) {
+		tst[i].tmr_id = i;
+		if (!timer_init(i, (void (*)(void *))timer_test_callback, &tst[i]))
+			break;
+	}
+	n = i;
 
-	timer_set(0, 100, 100);
-	timer_set(1, 150, 150);
-	timer_set(2, 300, 300);
-	timer_set(3, 450, 450);
-	timer_set(4, 440, 100);
-	timer_set(5, 430, 150);
-	timer_set(6, 420, 300);
-	timer_set(7, 410, 450);
-	timer_set(8, 10, 100);
-	timer_set(9, 15, 150);
-	timer_set(10, 30, 300);
-	timer_set(11, 45, 450);
-	timer_set(12, 44, 100);
-	timer_set(13, 43, 150);
-	timer_set(14, 42, 300);
-	timer_set(15, 41, 450);
-	timer_set(16, 1, 2);
+	for (i = 0; i < n; ++i) {
+		uint32_t tmo = rand() % 2000;
+		uint32_t itv = rand() % 2000;
+
+		tst[i].clk = chime_cpu_cycles();
+		tst[i].clk_tmo = tst[i].clk + tmo * 1000;
+		tst[i].itv = itv * 1000;
+
+		tracef(T_INF, "TMR %d: TMO=%d ITV=%d", tst[i].tmr_id, tmo, itv);
+
+		timer_set(tst[i].tmr_id, tmo, itv);
+	}
 
 	for (;;) {
 		chime_cpu_wait();
