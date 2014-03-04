@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="arcnet-sim" />
+		<Option makefile_is_custom="1" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<MakeCommands>
+			<Build command="make -f $makefile $target" />
+			<CompileFile command="make -f $makefile $file" />
+			<Clean command="make -f $makefile clean$target" />
+			<DistClean command="$make -f $makefile distclean$target" />
+			<AskRebuildNeeded command="make -q -f $makefile $target" />
+			<SilentBuild command="make -f $makefile $target &gt; $(CMD_NULL)" />
+		</MakeCommands>
+		<Build>
+			<Target title="Debug">
+				<Option output="debug/arcnet-sim.elf" prefix_auto="0" extension_auto="0" />
+				<Option object_output="debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+				<MakeCommands>
+					<Build command="make -f $makefile $target" />
+					<CompileFile command="make -f $makefile $file" />
+					<Clean command="make -f $makefile clean$target" />
+					<DistClean command="$make -f $makefile distclean$target" />
+					<AskRebuildNeeded command="make -q -f $makefile $target" />
+					<SilentBuild command="make -f $makefile $target &gt; $(CMD_NULL)" />
+				</MakeCommands>
+			</Target>
+			<Target title="Release">
+				<Option output="release/arcnet-sim.elf" prefix_auto="0" extension_auto="0" />
+				<Option object_output="release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+				<MakeCommands>
+					<Build command="make -f $makefile $target" />
+					<CompileFile command="make -f $makefile $file" />
+					<Clean command="make -f $makefile clean$target" />
+					<DistClean command="$make -f $makefile distclean$target" />
+					<AskRebuildNeeded command="make -q -f $makefile $target" />
+					<SilentBuild command="make -f $makefile $target &gt; $(CMD_NULL)" />
+				</MakeCommands>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+		</Compiler>
+		<Unit filename="../libchime/chime-client.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-comm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-cpu.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-cpu.h" />
+		<Unit filename="../libchime/chime-i.h" />
+		<Unit filename="../libchime/chime-node.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-osal.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-server.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-trace.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-util.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/clk-heap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/clk-heap.h" />
+		<Unit filename="../libchime/list.h" />
+		<Unit filename="../libchime/mempool.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/mempool.h" />
+		<Unit filename="../libchime/objpool.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/objpool.h" />
+		<Unit filename="../libchime/ptr-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/u16-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/u8-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="arcnet-sim.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="fx-arcnet.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="fx-arcnet.h" />
+		<Unit filename="fx-net.h" />
+		<Unit filename="fx-spinlock.h" />
+		<Unit filename="pkt-heap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="pkt-pool.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
