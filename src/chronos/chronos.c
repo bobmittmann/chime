@@ -51,6 +51,7 @@ void show_help(void)
 	printf("  [p] - pause simulation\n");
 	printf("  [q] - quit\n");
 	printf("  [r] - resume simulation\n");
+	printf("  [v] - dump variables\n");
 	printf("  [y] - reset all CPUs and COMMs\n");
 	printf("\n");
 	console_unlock();
@@ -169,6 +170,11 @@ int main(int argc, char *argv[])
 		case 'd':
 			printf("--- Dump ---\n");
 			chime_server_comm_stat();
+			chime_server_var_dump();
+			break;
+
+		case 'v':
+			printf("--- Variables ---\n");
 			chime_server_var_dump();
 			break;
 

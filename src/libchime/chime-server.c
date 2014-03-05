@@ -300,9 +300,10 @@ bool __chime_var_dump(struct chime_var * var)
 		ERR("fopen(\"%s\") failed: %s!", plt_path, __strerr());
 		return false;
 	}
+	fprintf(f, "#set terminal wxt\n");
 	fprintf(f, "set terminal png size 1280,768 font 'Verdana,12'\n");
 	fprintf(f, "set output '%s'\n", out_path);
-	fprintf(f, "set offset graph 0.05,0.05,0.05,0.0\n");
+	fprintf(f, "set offset graph 0.0,0.0,0.0,0.0\n");
 	fprintf(f, "# labels\n"); /* labels */
 	fprintf(f, "set xlabel 'Time(s)'\n");
 	fprintf(f, "set ylabel '%s'\n", name);
@@ -314,7 +315,9 @@ bool __chime_var_dump(struct chime_var * var)
 	fprintf(f, "set style line 12 lc rgb '#808080' lt 0 lw 1\n");
 	fprintf(f, "set grid back ls 12\n");
 	fprintf(f, "# line styles\n"); /* line styles */
-	fprintf(f, "set style line 1 lc rgb '#8b1a0e' pt 0 lt 1 lw 1\n");
+	fprintf(f, "set style line 1 lc rgb '#801010' pt 0 lt 1 lw 2\n");
+	fprintf(f, "set style line 2 lc rgb '#108010' pt 0 lt 1 lw 2\n");
+	fprintf(f, "set style line 3 lc rgb '#101080' pt 0 lt 1 lw 2\n");
 	fprintf(f, "plot '%s' using 1:2 notitle with lp ls 1\n", dat_path);
 	fprintf(f, "set output\n");
 	fprintf(f, "quit\n");

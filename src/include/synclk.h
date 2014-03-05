@@ -9,11 +9,14 @@
 #define D2LFP(a)   ((int64_t)((a) * FRAC))  /* NTP timestamp */
 #define LFP2D(a)   ((double)(a) / FRAC)
 
+#define TS2D(X)   ((double)(X) / FRAC)
+#define D2TS(X)   ((uint64_t)((X) * FRAC))
+
 #define D2FRAC(a)   ((int32_t)((a) * (1 << 31))  
 #define FRAC2D(a)   ((double)(a) / (1 << 31))
 
-#define Q31F(Q) ((float)((float)(Q) / 2147483648.))
-#define Q31(VAL) ((int32_t)((float)(VAL) * 2147483648.))
+#define Q31F(Q) ((float)((double)(Q) / 2147483648.))
+#define Q31(VAL) ((int32_t)((double)(VAL) * 2147483648.))
 #define Q31MUL(X1, X2) (((int64_t)(X1) * (int64_t)(X2)) >> 31)
 #define Q31DIV(NUM, DEN) (((int64_t)(NUM) << 31) / (int32_t)(DEN))
 
