@@ -12,8 +12,19 @@
 #define TS2D(X)   ((double)(X) / FRAC)
 #define D2TS(X)   ((uint64_t)((X) * FRAC))
 
+#define DT2D(X)   ((double)(int64_t)(X) / FRAC)
+#define D2DT(X)   ((int64_t)((X) * FRAC))
+
+
 #define D2FRAC(a)   ((int32_t)((a) * (1 << 31))  
 #define FRAC2D(a)   ((double)(a) / (1 << 31))
+
+
+#define DT2FLOAT(X)     ((float)(int64_t)(X) / FRAC)
+#define FLOAT2DT(X)     ((int64_t)((X) * FRAC))
+#define FLOAT2FRAC(a)   ((int32_t)((a) * (1 << 31))  
+#define FRAC2FLOAT(a)   ((float)(a) / (1 << 31))
+
 
 #define Q31F(Q) ((float)((double)(Q) / 2147483648.))
 #define Q31(VAL) ((int32_t)((double)(VAL) * 2147483648.))
@@ -70,6 +81,10 @@ uint64_t clock_timestamp(struct clock * clk);
 
 int32_t clock_freq_adjust(struct clock * clk, int32_t freq_adj, 
 						  int32_t offs_adj);
+
+int32_t clock_drift_adjust(struct clock * clk, int32_t drift);
+
+void clock_step(struct clock * clk, uint64_t ts);
 
 void clock_offs_adjust(struct clock * clk, int64_t offs_adj);
 

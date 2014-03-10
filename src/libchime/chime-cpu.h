@@ -19,6 +19,7 @@ struct cpu_tmr {
 	uint32_t timeout;
 	uint32_t period;
 	uint32_t seq;
+	uint32_t rst_ticks;
 };
 
 struct cpu_comm {
@@ -35,11 +36,6 @@ struct cpu_comm {
 #define CHIME_CPU_COMM_MAX 16
 
 #define CHIME_CPU_FREQ_HZ 1000000
-
-struct tmr_heap {
-	unsigned int cnt;
-	uint8_t id[CHIME_TIMER_MAX];
-};
 
 struct chime_cpu {
 	struct chime_client * client;

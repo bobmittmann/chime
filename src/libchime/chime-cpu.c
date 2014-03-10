@@ -99,6 +99,7 @@ static void __timer_reload(struct cpu_tmr  * tmr, int tmr_id)
 		} 
 	}
 
+	tmr->rst_ticks = cpu.node->ticks;
 	tmr->timeout = tmr->period;
 }
 
@@ -298,6 +299,18 @@ void chime_tmr_start(int tmr_id)
 	assert(tmr->timeout > 0);
 
 	__timer_reload(tmr, tmr_id);
+}
+
+uint32_t chime_tmr_count(int tmr_id)
+{
+	struct cpu_tmr  * tmr;
+
+	assert(tmr_id < CHIME_TIMER_MAX);
+
+	tmr = &cpu.tmr[tmr_id];
+	(void)tmr;
+
+	return cpu.node->ticks - tmr->rst_ticks;
 }
 
 static void __cpu_event_wait(void)

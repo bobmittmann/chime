@@ -267,7 +267,7 @@ void clock_offs_adjust(struct clock * clk, int64_t offs_adj)
 #define PLL_DERIV 0.4
 #define PLL_INTERVAL SYNCLK_POLL
 
-#define PLL_DRIFT_MAX Q31(0.000200)
+#define PLL_DRIFT_MAX Q31(0.001000)
 
 int32_t __pll_step(struct clock * clk, int32_t freq, int32_t offs)
 {
@@ -298,6 +298,7 @@ int32_t __pll_step(struct clock * clk, int32_t freq, int32_t offs)
 
 	clk->pll.freq = freq_adj;
 	clk->drift_comp = Q31MUL(clk->pll.freq, clk->resolution);
+
 	clk->increment = clk->resolution - clk->drift_comp;
 	drift_adj = clk->drift_comp * clk->frequency;
 
@@ -316,5 +317,28 @@ int32_t clock_phase_adjust(struct clock * clk, int32_t offs,
 int32_t clock_freq_adjust(struct clock * clk, int32_t freq_adj, int32_t offs)
 {
 	return __pll_step(clk, freq_adj, offs);
+}
+
+#define CLOCK_DRIFT_MAX Q31(0.01000)
+
+int32_t clock_drift_adjust(struct clock * clk, int32_t freq_adj)
+{
+	/* limit the maximum drift correction */
+	if (freq_adj > CLOCK_DRIFT_MAX)
+		freq_adj = CLOCK_DRIFT_MAX;
+	else if (freq_adj < -CLOCK_DRIFT_MAX)
+		freq_adj = -CLOCK_DRIFT_MAX;
+
+	/* calculate the drift compenastion per tick */
+	clk->drift_comp = Q31MUL(freq_adj, clk->resolution);
+	/* calculate the new increpent per tick */
+	clk->increment = clk->resolution + clk->drift_comp;
+	/* return the corrected drift adjustment */
+	return clk->drift_comp * clk->frequency;
+}
+
+void clock_step(struct clock * clk, uint64_t ts)
+{
+	clk->offset = (int64_t)(ts - clk->timestamp);
 }
 

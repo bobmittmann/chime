@@ -156,6 +156,8 @@ void chime_tmr_start(int tmr_id);
 
 void chime_tmr_stop(int tmr_id);
 
+uint32_t chime_tmr_count(int tmr_id);
+
 /*****************************************************************************
  * Communications API
  *****************************************************************************/

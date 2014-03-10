@@ -23,7 +23,7 @@ include ../scripts/config.mk
 
 PROG = master
 
-CFILES = master.c
+CFILES = rtc-sim.c master.c
 
 LIBDIRS = ../libchime ../libsynclk
 
