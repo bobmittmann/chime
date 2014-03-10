@@ -174,6 +174,8 @@ void rtc_poll_timer_isr(void)
 				rtc.fll.secs = 0;
 				if (rtc.fll.cnt < 0)
 					rtc.fll.cnt++;
+			} else {
+				clock_phase_adjust(&local_clock, (int32_t)offs, 0);
 			}
 		}
 	
