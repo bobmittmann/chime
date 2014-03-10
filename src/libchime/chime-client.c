@@ -336,6 +336,23 @@ bool chime_sim_resume(void)
 	return ret;
 }
 
+bool chime_sim_vars_dump(void)
+{
+	bool ret = false;
+
+	__mutex_lock(client.mutex);
+
+	if (client.started) {
+		ret = __cpu_req_send(CHIME_REQ_VAR_DUMP, 0);
+	} else {
+		ERR("client is not running!");
+	}
+
+	__mutex_unlock(client.mutex);
+
+	return ret;
+}
+
 bool chime_except_catch(struct chime_except * e)
 {
 	struct chime_node * node;

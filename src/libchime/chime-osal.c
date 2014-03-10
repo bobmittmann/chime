@@ -41,9 +41,33 @@ void __msleep(unsigned int ms)
  * Application initialization and signal handling
  *****************************************************************************/
 
-#ifndef _WIN32
 /* global cleanup callback */
 static void (* __term_handler)(void) = NULL;
+
+#ifdef _WIN32
+
+BOOL CtrlHandler(DWORD fdwCtrlType) 
+{ 
+	switch (fdwCtrlType) { 
+	case CTRL_C_EVENT: // Handle the CTRL-C signal. 
+	case CTRL_BREAK_EVENT: 
+	case CTRL_CLOSE_EVENT: 
+		DBG("calling custom termination callback");
+		if (__term_handler != NULL) {
+			__term_handler();
+			return FALSE; 
+		} else {
+			WARN("__term_handler==NULL");
+			return FALSE; 
+		}
+
+	default: 
+		DBG("unhandled signal: %d", (int)fdwCtrlType);
+		return FALSE; 
+	} 
+} 
+
+#else
 
 static void __abort_handler(int signum)
 {
@@ -88,7 +112,16 @@ static void __termination_handler(int signum)
 
 void __term_sig_handler(void (* handler)(void))
 {       
-#ifndef _WIN32
+#ifdef _WIN32
+	if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE)) { 
+		INF("Control Handler Installed!");
+
+		/* Register a cleanup callback routine */
+		__term_handler = handler;
+	} else {
+		ERR("Could not set control handler"); 
+	}
+#else
 	sigset_t set;
 	struct sigaction new_action;
 
@@ -643,7 +676,7 @@ int __sem_post(__sem_t sem)
 {
 	int ret;
 #ifdef _WIN32
-	ret = ReleaseMutex(sem) ? 0 : -1;
+	ret = ReleaseSemaphore(sem, 1, NULL) ? 0 : -1;
 #else
 	ret = sem_post(sem);
 #endif

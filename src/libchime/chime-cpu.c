@@ -427,9 +427,10 @@ int __cpu_sim_loop(struct chime_node * node)
 	/* notify client */
 	cpu.enabled = false;
 	node->c.except = code;
+
 	__sem_post(node->c.except_sem);
 
-	DBG1("CPU:%s control end.", cpu.node->name);
+	DBG2("CPU:%s control end.", cpu.node->name);
 
 	return 0;
 }

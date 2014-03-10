@@ -79,8 +79,8 @@ void rtc_pps_isr(void)
 
 #if ENABLE_RTC_TRACE
 	rtc_chip.time_val += 1.0;
-//	chime_var_rec(rtc_chip.time_var, rtc_chip.time_val - chime_cpu_time());
-	chime_var_rec(rtc_chip.time_var, rtc_chip.time_val);
+	chime_var_rec(rtc_chip.time_var, rtc_chip.time_val - chime_cpu_time());
+//	chime_var_rec(rtc_chip.time_var, rtc_chip.time_val);
 #endif
 
 	/* count seconds */
@@ -153,7 +153,7 @@ void rtc_chip_reset(void)
 
 	/* Wed, 01 Jan 2014 00:00:00 GMT */
 	rtc_chip.addr = 0;
-	rtc_chip.seconds = 10;
+	rtc_chip.seconds = 2;
 	rtc_chip.minutes = 0;
 	rtc_chip.hours = 0;
 #if 0

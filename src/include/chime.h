@@ -99,6 +99,7 @@ bool chime_reset_all(void);
 bool chime_sim_speed_set(float val);
 bool chime_sim_resume(void);
 bool chime_sim_pause(void);
+bool chime_sim_vars_dump(void);
 
 /*****************************************************************************
  * Chime utilities
