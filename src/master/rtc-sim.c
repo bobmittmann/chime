@@ -177,7 +177,7 @@ void rtc_chip_reset(void)
 #endif
 
 	/* PPS timer */
-	chime_tmr_init(0, rtc_pps_isr, 500000, 1000000);
+	chime_tmr_init(0, rtc_pps_isr, 300000, 1000000);
 	/* I2C slave */
 	chime_comm_attach(0, "i2c_rtc", rtc_i2c_rcv_isr, NULL, NULL);
 

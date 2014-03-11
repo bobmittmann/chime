@@ -342,3 +342,62 @@ void clock_step(struct clock * clk, uint64_t ts)
 	clk->offset = (int64_t)(ts - clk->timestamp);
 }
 
+#define CLOCK_PLL_PROP 0.000005
+#define CLOCK_PLL_DERIV 200
+#define CLOCK_PLL_INTERVAL 1
+#define CLOCK_PLL_A Q31(-0.41421)
+#define CLOCK_PLL_B Q31(0.29289)
+
+int32_t clock_iir_apply(int32_t x[], int32_t y[], int32_t v) 
+{
+	/* Shift the old samples */
+	x[1] = x[0];
+	y[1] = y[0];
+	/* Calculate the new output */
+	x[0] = v;
+	y[0] = Q31MUL(CLOCK_PLL_B, x[0] + x[1]) - Q31MUL(CLOCK_PLL_A, y[1]);
+	return y[0];
+}
+
+void pll_reset(struct clock_pll  * pll)
+{
+	int i;
+
+	pll->err = 0;
+	pll->vco = 0;
+
+	/* IIR order filer */
+	for (i = 0; i < sizeof(pll->f0.x) / sizeof(int32_t); ++i) {
+		pll->f0.x[i] = 0;
+		pll->f0.y[i] = 0;
+	}
+
+	for (i = 0; i < sizeof(pll->f1.x) / sizeof(int32_t); ++i) {
+		pll->f1.x[i] = 0;
+		pll->f1.y[i] = 0;
+	}
+}
+
+int32_t pll_pps_step(struct clock_pll  * pll, int32_t offs)
+{
+	int32_t de;
+	int32_t e;
+	int32_t y;
+
+	e = offs;
+	de = clock_iir_apply(pll->f0.x, pll->f0.y, (e - pll->err));
+//	de = e - pll->err;
+	pll->err = e;
+
+//	chime_var_rec(offs_var, Q31F(offs));
+//	chime_var_rec(err_var, Q31F(e));
+//	chime_var_rec(de_var, Q31F(de));
+
+	y = Q31MUL(e, Q31(CLOCK_PLL_PROP)) + 
+		Q31MUL(de, Q31(CLOCK_PLL_DERIV * CLOCK_PLL_PROP));
+
+	DBG2("e=%.8f de=%.8f y=%.8f", Q31F(e), Q31F(de), Q31F(y));
+
+	return y;
+}
+
