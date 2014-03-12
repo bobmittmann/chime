@@ -25,7 +25,7 @@ include ../scripts/config.mk
 
 LIB_STATIC = synclk
 
-CFILES = mktime.c gmtime_r.c utils.c clock.c pll.c synclk.c
+CFILES = mktime.c gmtime_r.c utils.c clock.c pll.c fll.c synclk.c
 
 INCPATH = ../include
 

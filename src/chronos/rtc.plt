@@ -1,7 +1,9 @@
-set terminal wxt
-#set terminal png size 1280,768 font 'Verdana,12'
-set output './rtc_time.png'
+#set terminal wxt
+set terminal windows
+#set terminal png size 2048,768 font 'Verdana,12'
+#set output './rtc_time.png'
 set offset graph 0.0,0.0,0.0,0.0
+set autoscale
 # labels
 set xlabel 'Time(s)'
 set ylabel 'rtc_time'
@@ -16,9 +18,10 @@ set grid back ls 12
 set style line 1 lc rgb '#c01010' pt 0 lt 1 lw 2
 set style line 2 lc rgb '#10c010' pt 0 lt 1 lw 2
 set style line 3 lc rgb '#1010c0' pt 0 lt 1 lw 2
-set style line 4 lc rgb '#f04010' pt 0 lt 1 lw 2
-plot './rtc_time.dat' using 1:2 notitle with lp ls 2, \
-	'./rtc_clk.dat' using 1:2 notitle with lp ls 3, \
-	'./master_clk.dat' using 1:2 notitle with lp ls 4
+set style line 4 lc rgb '#e08010' pt 0 lt 1 lw 2
+plot './rtc_time.dat' using 1:2 with lp ls 2 title "RTC", \
+	'./rtc_clk.dat' using 1:2 with lp ls 3 title "Poll", \
+	'./master_clk.dat' using 1:2 with lp ls 1 title "Sys", \
+	'./master_temp.dat' using 1:2 with lp ls 4 title "Temp" 
 set output
 quit

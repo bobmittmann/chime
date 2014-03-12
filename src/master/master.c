@@ -44,6 +44,8 @@ void rtc_poll_tmr_isr(void)
 
 int rtc_clk_var;
 int rtc_time_var;
+int master_clk_var;
+int master_temp_var;
 
 #define LOCAL_CLOCK_TMR 0
 #define RTC_POLL_TMR 1
@@ -51,16 +53,16 @@ int rtc_time_var;
 #define ARCNET_COMM 0
 #define I2C_RTC_COMM 1
 
-#define SIM_POLL_JITTER_US 20000
+#define SIM_POLL_JITTER_US 5000
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
-#define SIM_TIME_HOURS 12
+#define SIM_TIME_HOURS 6
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-#define LOCAL_CLOCK_FREQ_HZ 200
+#define LOCAL_CLOCK_FREQ_HZ 9
 
 static struct clock local_clock;
 
@@ -74,7 +76,7 @@ void local_clock_tmr_isr(void)
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, LOCAL_CLOCK_FREQ_HZ);
+	clock_init(&local_clock, LOCAL_CLOCK_FREQ_HZ, LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
 		unsigned int period_us;
@@ -87,25 +89,12 @@ void local_clock_init(void)
 }
 
 /****************************************************************************
- * Clock FLL (Frequency Locked Loop) 
- ****************************************************************************/
-
-void fll_reset(struct clock_fll  * fll)
-{
-	fll->run = false;
-	fll->lock = false;
-	fll->drift = 0;
-	fll->err = 0;
-	fll->edge_offs = 0;
-	fll->edge_filt = 0;
-}
-
-/****************************************************************************
  * RTC
  ****************************************************************************/
 
 #define RTC_POLL_FREQ_HZ 8
-#define RTC_POLL_SHIFT_PPM 200
+#define RTC_POLL_SHIFT_PPM 250
+#define FLL_ERR_MAX FLOAT_CLK(2.0 / RTC_POLL_FREQ_HZ)
 
 struct rtc_clock {
 	uint64_t ts;
@@ -113,206 +102,85 @@ struct rtc_clock {
 	int8_t sec;
 };
 
-struct rtc_clock rtc;
+struct rtc_clock rtc_clk;
 
 struct clock_fll fll;
 
 #define RTC_OFFS_MAX FLOAT_CLK(2.0 / RTC_POLL_FREQ_HZ)
-#define FLL_OFFS_MAX FLOAT_CLK(2.0 / RTC_POLL_FREQ_HZ)
-#define RTC_FLL_PERIOD  (10000 / RTC_POLL_FREQ_HZ)
-
 
 /* This function simulates the polling of the RTC. 
    It should be called at RTC_POLL_FREQ_HZ frequency. */
 void rtc_poll(void)
 {
-	uint64_t ts;
+	uint64_t rtc_ts;
 	char s[3][64];
 	/* time structure from the RTC chip */
 	struct rtc_tm rtm;
 	int64_t offs;
-	int64_t err;
 	(void)s;
 
 	/* read from the RTC Chip */
 	rtc_read(&rtm);
 
-	/* update the RTC clock */
-	rtc.ts += rtc.period;
+	/* update the RTC clock estimated time */
+	rtc_clk.ts += rtc_clk.period;
 
-	/* pool the RTC, waiting for next second count */
-	if (rtc.sec == rtm.seconds)
+	/* wait for next RTC second count */
+	if (rtc_clk.sec == rtm.seconds)
 		return;
 
-	/* Convert the RTC time structure into clock timestamp.
-	   Add half of the rtc swing. This will make the reading
-	   of the RTC to oscillate centered int the hardware RTC time... */
-//	ts = rtc_timestamp(&rtm) + FLOAT_CLK(0.5 / RTC_POLL_FREQ_HZ);
-	ts = rtc_timestamp(&rtm);
+	/* save the seconds */
+	rtc_clk.sec = rtm.seconds;
+
+	/* Convert the RTC time structure into clock timestamp */
+	rtc_ts = rtc_timestamp(&rtm);
 	
-	DBG1("rtc=%s clk=%s", fmt_clk(s[0], ts), fmt_clk(s[1], rtc.ts));
+	DBG1("rtc=%s clk=%s", fmt_clk(s[0], rtc_ts), fmt_clk(s[1], rtc_clk.ts));
 
-	rtc.sec = rtm.seconds;
+	offs = (int64_t)(rtc_ts - rtc_clk.ts);
 
-	offs = (int64_t)(ts - rtc.ts);
+	if ((offs >= RTC_OFFS_MAX) || (offs <= -RTC_OFFS_MAX)) {
+		/* if we are off by too much step the clock */
 
-	do {
-		if ((offs >= RTC_OFFS_MAX) || (offs <= -RTC_OFFS_MAX)) {
-			/* if we are off by too much step the clock */
+		DBG("clk=%s offs=%s !STEP!", fmt_clk(s[0], rtc_ts), 
+			fmt_clk(s[1], offs));
 
-			/* force RTC clock time */
-			rtc.ts = ts;
+		DBG5("STEP clk=%"PRIu64" offs=%"PRId64" max=%"PRId64, 
+			 rtc_ts, offs, RTC_OFFS_MAX);
 
-			DBG1("clk=%s offs=%s !STEP!", fmt_clk_ms(s[0], ts), 
-				 fmt_clk_ms(s[1], offs));
+		/* Force RTC clock time to the hardware value */
+		rtc_clk.ts = rtc_ts;
 
-			DBG5("STEP clk=%"PRIu64" offs=%"PRId64" max=%"PRId64, 
-				 ts, offs, RTC_OFFS_MAX);
-
-			/* set local clock */
-			clock_time_set(&local_clock, ts);
-
-			/* reset the FLL */
-			fll_reset(&fll);
-
-			break;
-		} 
-
-		DBG2("clk=%s offs=%s", fmt_clk_ms(s[0], ts), 
+		/* reset the FLL */
+		fll_reset(&fll, rtc_clk.ts);
+	} else { 
+		DBG2("clk=%s offs=%s", fmt_clk_ms(s[0], rtc_ts), 
 			 fmt_clk_ms(s[1], offs));
-		rtc.ts += offs;
+		rtc_clk.ts += offs;
 
-		/* compute the error between RTC and local clocks */
-		err = rtc.ts - clock_time_get(&local_clock);
-
-		/* Sanity check. If we are off by too much, 
-		   stop the FLL!!! */
-		if ((err > FLL_OFFS_MAX) || (err <  -FLL_OFFS_MAX)) {
-			ERR("FLL error diff=%s ", fmt_clk(s[1], err));
-			chime_var_rec(rtc_time_var, 1);
-			fll.err = err;
-			if (fll.run) {
-				fll.run = false;
-				fll.edge_offs = 0;
-				DBG("FLL stopped at %s!", fmt_clk(s[1], rtc.ts));
-			}
-			break;
-		}
-
-		/* Eddge filter window to avoid detecting multiple transitions. */
-		if (fll.edge_filt) {
-			fll.edge_filt--;
-			break;
-		} 
-		
-		if (!fll.run) {
-			fll.err = err;
-
-			DBG1("err=%s offs=%s", fmt_clk(s[0], err), fmt_clk(s[1], offs));
-
-			if (offs != 0) {
-				/* capture the NOW timetamps */
-				fll.ref_ts = rtc.ts;
-				/* get raw local clock (no offset) */
-				fll.clk_ts = clock_timestamp(&local_clock);
-				/* Enable edge filter window to avoid detecting 
-				   a second transition right after the first one. */
-				fll.edge_filt = 300; /* edge filter window (seconds) */
-				fll.edge_offs = offs;
-
-				fll.lock = false;
-				fll.run = true;
-				DBG("FLL started at %s!", fmt_clk(s[1], rtc.ts));
-			}
-			break;
-		} 
-
-		/* Sanity check. If an edge is detected it should have the 
-		   same polarity of the previous one */
-		if (offs && (fll.edge_offs != offs)) {
-			ERR("FLL error: edge=%s offs=%s ", 
-				fmt_clk(s[0], fll.edge_offs), 
-				fmt_clk(s[1], offs));
-			fll.run = false;
-			fll.edge_offs = 0;
-			DBG("FLL stopped at %s!", fmt_clk(s[1], rtc.ts));
-			fll.edge_filt = 600; /* extended edge filter window */
-			fll.err = err;
-			break;
-		}
-
-		if (offs && (fll.edge_offs == offs)) {
-			int64_t clk_dt;
-			int64_t rtc_dt;
-			int32_t drift;
-			float freq;
-			float dy;
-			float dx;
-
-			/* Enable edge filter window to avoid detecting 
-			   a second transition right after the first one. */
-			fll.edge_filt = 300; /* edge filter window (seconds) */
-
-			/* get raw local clock (no offset) */
-			clk_dt = clock_timestamp(&local_clock) - fll.clk_ts;
-
-			if (!fll.lock) {
-				fll.err = err;
-				if (clk_dt < FLOAT_CLK(1800))
-					break;
-
-				DBG("FLL locked at %s!", fmt_clk(s[1], rtc.ts));
-				fll.lock = true;
-			} 
-
-			/* update the timetamp for next round */
-			fll.clk_ts += clk_dt;
-
-			rtc_dt = rtc.ts - fll.ref_ts;
-			fll.ref_ts += rtc_dt;
-
-			dy = CLK_FLOAT(clk_dt);
-			dx = CLK_FLOAT(rtc_dt);
-
-			freq = dy / dx;
-
-			DBG("FLL offs=%s dy=%.6f dx=%.6f", 
-				fmt_clk(s[1], offs), dy, dx);
-
-			//	drift = (2 * fll.drift + FLOAT_Q31(1.0 - freq)) / 2;
-			drift = fll.drift + FLOAT_Q31(1.0 - freq);
-			fll.drift = clock_drift_comp(&local_clock, drift);
-
-			DBG("FLL freq=%.9f drift=%.9f", 
-				freq, Q31_FLOAT(fll.drift));
-		}
-	} while (0);
-
-	if (fll.err) {
-		int32_t e;
-		/* exponential amortization for the local clock error */
-		e = fll.err / 128;
-		if (e) {
-			fll.err -= e;
-			clock_step(&local_clock, e);
-		}
+		fll_step(&fll, rtc_clk.ts, offs);
 	}
 
-	chime_var_rec(rtc_clk_var, CLK_DOUBLE(rtc.ts) - chime_cpu_time());
+	chime_var_rec(rtc_clk_var, CLK_DOUBLE(rtc_clk.ts) - chime_cpu_time());
+	chime_var_rec(master_clk_var, 
+				  CLK_DOUBLE(clock_time_get(&local_clock)) - chime_cpu_time());
+
 }
 
 void rtc_clock_init(void)
 {
-	/* Initialize the second count with an invalid value.
-	   This will force the second update on the first round. */
-	rtc.sec = -1; 
-	rtc.ts = 0;
-	rtc.period = FLOAT_CLK(1.0 / RTC_POLL_FREQ_HZ);
+	/* Initialize the seconds count with an invalid value.
+	   This will force a seconds update on the first round. */
+	rtc_clk.sec = -1; 
+	rtc_clk.ts = 0;
+	rtc_clk.period = FLOAT_CLK(1.0 / RTC_POLL_FREQ_HZ);
 
-	/* Initialize the FLL */
-	fll_reset(&fll);
+	/* Initialize the FLL.
+	   Connect the local clock to the FLL discipline. */
+	fll_init(&fll, &local_clock, FLL_ERR_MAX);
 
-	{ /* XXX: simulation!! */
+
+	{ /* XXX: simulation only!! */
 		unsigned int itv_us;
 
 		rtc_connect(I2C_RTC_COMM);
@@ -346,14 +214,20 @@ void abort_timer_isr(void)
 		chime_cpu_self_destroy();
 	}
 
-	DBG("temp=%.2f dg.C clk=%.1f ppm", 
-		chime_cpu_temp_get(), chime_cpu_ppm_get());
+	DBG1("temp=%.2f dg.C clk=%.1f ppm", 
+		 chime_cpu_temp_get(), chime_cpu_ppm_get());
 
-	if (sim_temperature >= SIM_TEMP_MAX) 
-		sim_temp_rate *= -1;
+	if (sim_temperature >= SIM_TEMP_MAX) {
+		sim_temp_rate *= -1.5;
+	} else if (sim_temp_rate < 0) {
+		if (sim_temperature <= 25)
+			sim_temp_rate = 0;
+	}
 
 	sim_temperature += sim_temp_rate;
 	chime_cpu_temp_set(sim_temperature);
+
+	chime_var_rec(master_temp_var, ((sim_temperature) / 100) + 1);
 
 	if ((sim_minutes % 15) == 0) {
 		chime_sim_vars_dump();
@@ -364,7 +238,6 @@ void cpu_master(void)
 {
 	struct synclk_pkt pkt;
 	int cnt = 0;
-	int var;
 
 	(void)cnt;
 	(void)pkt;
@@ -377,9 +250,9 @@ void cpu_master(void)
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", NULL, NULL, NULL);
 
-	/* open a simulation variable recorder */
-	var = chime_var_open("master_clk");
-	(void)var;
+	/* open simulation variable recorders */
+	master_temp_var = chime_var_open("master_temp");
+	master_clk_var = chime_var_open("master_clk");
 
 	/* initialize RTC clock */
 	rtc_clock_init();
@@ -392,8 +265,6 @@ void cpu_master(void)
 	pkt.sequence = 0;
 
 	for (;;) {
-		uint64_t local;
-
 		for (;;) { /* XXX: simulation */
 			chime_cpu_wait();
 
@@ -410,9 +281,6 @@ void cpu_master(void)
 				rtc_poll();
 			}	
 		}
-
-		local = clock_time_get(&local_clock);
-		chime_var_rec(var, CLK_DOUBLE(local) - chime_cpu_time());
 
 #if 0
 
@@ -474,8 +342,18 @@ int main(int argc, char *argv[])
 		WARN("chime_comm_create() failed!");	
 	}
 
-	/* Commonn value for Tc = 0.04 ppm */
-	if (chime_cpu_create(-200, -0.1, cpu_master) < 0) {
+	/* Commonn value for Tc = 0.04 ppm,
+		Limits: 
+		- offset +-200 ppm  
+		- temp drift: -0.1 ppm  
+		Bad crystal: 
+		- offset +-100 ppm  
+		- temp drift: -0.05 ppm  
+		Good crystal: 
+		- offset +-25 ppm  
+		- temp drift: -0.025 ppm  
+	 */
+	if (chime_cpu_create(+25, -0.025, cpu_master) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;

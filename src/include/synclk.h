@@ -17,7 +17,7 @@
 /* convert from clock interval to milliseconds */
 #define CLK_MS(X)        (((int64_t)(X) * 1000LL) / 4294967296LL)
 /* convert from clock interval to milliseconds */
-#define CLK_SEC(X)       ((int64_t)(X) / 4294967296LL)
+#define CLK_SEC(X)       ((int32_t)((int64_t)(X) / 4294967296LL))
 /* Convert from fixed point Q31 to clock interval */
 #define Q31_CLK(X)       ((int64_t)((X) * 2))
 /* Convert from clock interval to fixed point Q31 */
@@ -31,7 +31,33 @@
 #define Q31_DIV(NUM, DEN) (((int64_t)(NUM) << 31) / (int32_t)(DEN))
 
 
+struct clock {
+	volatile uint64_t timestamp; /* clock timestamp */
+	uint64_t offset; /* clock offset */
+	int32_t resolution; /* fractional clock resolution */
+	int32_t increment; /* fractional per tick increment */
+	int32_t drift_comp;
+	uint32_t frequency;
+	bool pps_flag;
+	int hw_tmr;
+};
+
+struct clock_fll {
+	struct clock  * clk;
+	int32_t drift;
+	uint64_t ref_ts;
+	uint64_t clk_ts;
+	int64_t err;
+	int64_t err_max;
+	int32_t edge_offs;
+	uint32_t edge_filt;
+	uint32_t edge_win;
+	bool lock;
+	bool run;
+};
+
 struct clock_pll {
+	struct clock  * clk;
 	int32_t err;
 	int32_t freq;
 	int32_t vco;
@@ -43,27 +69,6 @@ struct clock_pll {
 		int32_t x[4];
 		int32_t y[4];
 	} f1;
-};
-
-struct clock_fll {
-	int32_t drift;
-	uint64_t ref_ts;
-	uint64_t clk_ts;
-	int64_t err;
-	int32_t edge_offs;
-	uint32_t edge_filt;
-	bool lock;
-	bool run;
-};
-
-struct clock {
-	volatile uint64_t timestamp; /* clock timestamp */
-	uint64_t offset; /* clock offset */
-	int32_t resolution; /* fractional clock resolution */
-	int32_t increment; /* fractional per tick increment */
-	int32_t drift_comp;
-	uint32_t frequency;
-	bool pps_flag;
 };
 
 struct synclk_pkt {
@@ -105,7 +110,7 @@ void clock_step(struct clock * clk, int64_t dt);
 int32_t clock_drift_comp(struct clock * clk, int32_t drift);
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, uint32_t tick_freq_hz);
+void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr);
 
 
 /****************************************************************************
@@ -124,8 +129,11 @@ void pll_reset(struct clock_pll  * pll);
  * Clock FLL (Frequency Locked Loop) functions 
  ****************************************************************************/
 
-void fll_reset(struct clock_fll  * fll);
+void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs);
 
+void fll_reset(struct clock_fll  * fll, uint64_t ref_ts);
+
+void fll_init(struct clock_fll  * fll, struct clock  * clk, int64_t err_max);
 
 /****************************************************************************
  * Clock synchronization functions 
