@@ -47,9 +47,11 @@ struct clock_pll {
 
 struct clock_fll {
 	int32_t drift;
-	uint64_t rtc_ts;
+	uint64_t ref_ts;
 	uint64_t clk_ts;
-	int32_t err;
+	int64_t err;
+	int32_t edge_offs;
+	uint32_t edge_filt;
 	bool lock;
 	bool run;
 };

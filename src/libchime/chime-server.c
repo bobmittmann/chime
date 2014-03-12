@@ -827,9 +827,9 @@ void __chime_req_bkpt(struct chime_request * req)
 	int node_id = req->node_id;
 	struct chime_node * node = server.node[node_id];
 
-   // assert(node != NULL);
 	if (node == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
+//   		assert(node != NULL);
 		return;
 	}
 
@@ -862,9 +862,9 @@ void __chime_req_timer(struct chime_request * req)
 	struct chime_event evt;
 	uint64_t clk;
 
-  //  assert(node != NULL);
 	if (node == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
+//  		assert(node != NULL);
 		return;
 	}
 
@@ -873,7 +873,11 @@ void __chime_req_timer(struct chime_request * req)
 		return;
 	}
 
-	assert(cycles > 0);
+	if (cycles == 0) {
+		WARN("<%d> cycles == 0 !!!", node_id);
+		assert(cycles > 0);
+		return;
+	}
 
 	evt.node_id = node_id;
 	evt.opc = CHIME_EVT_TMR0 + req->opc - CHIME_REQ_TMR0;
@@ -909,11 +913,18 @@ void __chime_req_step(struct chime_request * req)
 
 	if (node == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
+   		assert(node != NULL);
 		return;
 	}
 
 	if (node->sid != server.sim.sid) {
 		WARN("<%d> wrong SID.", node_id);
+		return;
+	}
+
+	if (cycles == 0) {
+		DBG("<%d> cycles == 0 !!!", node_id);
+//		assert(cycles > 0);
 		return;
 	}
 
@@ -930,10 +941,20 @@ void __chime_req_step(struct chime_request * req)
 	evt.oid = 0;
 	evt.ticks = node->ticks + cycles;
 
+#if DEBUG
 	/* insert into the clock simulation heap */
+	if ((int64_t)(clk - server.heap->clk) < 0) {
+		WARN("<%d> clk=%"PRIu64" diff=%"PRId64, node_id, clk, 
+			 (int64_t)(clk - server.heap->clk));
+		WARN("<%d> cycles=%d", node_id, cycles);
+		WARN("<%d> node->clk=%"PRIu64" diff=%"PRId64, node_id, node->clk, 
+			 (int64_t)(node->clk - server.heap->clk));
+		heap_dump(stderr, server.heap);
+	}
+#endif
+
 	assert((int64_t)(clk - server.heap->clk) >= 0);
 	heap_insert_min(server.heap, clk, &evt);
-//	heap_dump(server.heap);
 
 	/* decrement the node run count */
 	server.sim.checkout_cnt--;
@@ -973,6 +994,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 	xmt_node = server.node[xmt_id];
 	if (xmt_node == NULL) {
 		WARN("<%d> invalid node!!!", xmt_id);
+   	//	assert(xmt_node != NULL);
 		return;
 	}
 
@@ -1085,6 +1107,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 		node = server.node[id];
 		if (node == NULL) {
 			WARN("<%d> invalid node!!!", id);
+   			assert(node != NULL);
 			continue;
 		}	
 
@@ -1149,7 +1172,7 @@ void __chime_req_bye(struct chime_request * req)
 	/* sanity check */
     if (node == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
-		assert(node != NULL);
+//		assert(node != NULL);
 		return;
 	}
 
@@ -1301,11 +1324,19 @@ void __chime_req_temp_set(struct chime_request * req)
 	uint64_t clk[EVENT_PER_NODE_MAX];
 	int node_id = req->node_id;
 	float t = req->temp.val;
-	struct chime_node * node = server.node[node_id];
+	struct chime_node * node;
 	double old_period;
 	double old_dt;
 	int i;
 	int n;
+
+	/* sanity check */
+	node = server.node[node_id];
+    if (node == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		assert(node != NULL);
+		return;
+	}
 
 	old_dt = node->dt;
 	(void)old_dt;
@@ -1321,7 +1352,7 @@ void __chime_req_temp_set(struct chime_request * req)
 	n = 0;
 	while (heap_pick(server.heap, i, &clk[n], &evt[n])) {
 		if (evt[n].node_id == node_id) {
-			DBG("<%d> updating event %s", node_id, __evt_opc_nm[evt[n].opc]);
+			DBG2("<%d> updating event %s", node_id, __evt_opc_nm[evt[n].opc]);
 			heap_delete(server.heap, i);
 			n++;
 			if (n == EVENT_PER_NODE_MAX) {
@@ -1347,14 +1378,14 @@ void __chime_req_temp_set(struct chime_request * req)
 		heap_insert_min(server.heap, clk[i], &evt[i]);
 	}
 
-	DBG("<%d> %d events updated", node_id, n);
+	DBG3("<%d> %d events updated", node_id, n);
 
 #if DEBUG
 	{
 		double freq_hz;
 		freq_hz = node->dt / 1000.0;
-		INF("temp=%.1f dt=%" PRIu64 "(fs/us) freq=%0.3fHz",
-			t, node->dt, freq_hz);
+		DBG1("temp=%.1f dt=%" PRIu64 "(fs/us) freq=%0.3fHz",
+			 t, node->dt, freq_hz);
 	}
 #endif
 }
@@ -1425,7 +1456,12 @@ void __chime_req_init(struct chime_request * req)
 	struct chime_node * node = server.node[node_id];
 
 	/* sanity check */
-    assert(node != NULL);
+    if (node == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		assert(node != NULL);
+		return;
+	}
+
 
 	DBG("<%d> session %d.", node_id, req->init.sid);
 
@@ -1585,7 +1621,16 @@ void __chime_req_var_rec(struct chime_request * req)
 	DBG3("<%d> oid=%d val=%f", node_id, req->oid, req->rec.val);
 
 	node = server.node[node_id];
+
+	/* sanity check */
+    if (node == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+//		assert(node != NULL);
+		return;
+	}
+
 	assert(node_id == node->id);
+
 	var = obj_getinstance(req->oid);
 
 	/* check for space availability. If we are short,

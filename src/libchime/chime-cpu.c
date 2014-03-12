@@ -465,7 +465,12 @@ void chime_cpu_step(uint32_t cycles)
 	req.hdr.oid = 0;
 	req.cycles = cycles;
 
-	DBG1("cycles=%d.", cycles);
+	if (cycles == 0) {
+		DBG1("cycles=%d!!", cycles);
+		return;
+	}
+
+	DBG5("cycles=%d.", cycles);
 
 	if (__mq_send(cpu.xmt_mq, &req, CHIME_REQ_STEP_LEN) < 0) {
 		ERR("__mq_send() failed: %s.", __strerr());
@@ -617,9 +622,14 @@ double chime_cpu_time(void)
 
 bool chime_cpu_temp_set(float temp) 
 {
-	DBG("<%d> temp=%.2f dg.C", cpu.node_id, temp);
+	DBG5("<%d> temp=%.2f dg.C", cpu.node_id, temp);
 
 	return __cpu_req_float_set(CHIME_REQ_SIM_TEMP_SET, 0, temp);
+}
+
+float chime_cpu_temp_get(void) 
+{
+	return cpu.node->temperature;
 }
 
 float chime_cpu_freq_get(void) 

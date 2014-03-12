@@ -140,6 +140,8 @@ double chime_cpu_time(void);
 
 bool chime_cpu_temp_set(float temp);
 
+float chime_cpu_temp_get(void);
+
 int chime_cpu_var_open(const char * name);
 
 float chime_cpu_freq_get(void);
