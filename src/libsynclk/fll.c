@@ -42,7 +42,6 @@
    with a reference clock... */
 void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 {
-	char s[2][32];
 	int64_t clk_dt;
 	int64_t rtc_dt;
 	int32_t drift;
@@ -51,8 +50,6 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 	float dy;
 	float dx;
 
-	(void)s;
-
 	do {
 		/* compute the error between reference time and local clocks */
 		err = ref_ts - clock_time_get(fll->clk);
@@ -60,12 +57,12 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		/* Sanity check. If we are off by too much, 
 		   stop the FLL!!! */
 		if ((err > fll->err_max) || (err < -fll->err_max)) {
-			ERR("FLL error diff=%s ", fmt_clk(s[1], err));
+			ERR("FLL error diff=%s ", FMT_CLK(err));
 			fll->err = err;
 			if (fll->lock) {
 				fll->lock = false;
 				DBG("FLL (t=%d) unlocked at %s!", 
-					CLK_SEC(ref_ts), fmt_clk(s[1], ref_ts));
+					CLK_SEC(ref_ts), FMT_CLK(ref_ts));
 			}
 			break;
 		}
@@ -95,7 +92,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		fll->err = err;
 
 		if (!fll->run) {
-			DBG1("err=%s offs=%s", fmt_clk(s[0], err), fmt_clk(s[1], offs));
+			DBG1("err=%s offs=%s", FMT_CLK(err), FMT_CLK(offs));
 
 			/* save the RTC timetamps */
 			fll->ref_ts = ref_ts;
@@ -109,7 +106,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 			/* change the state to RUN! */
 			fll->run = true;
 			DBG("FLL (t=%d) started at %s, edge=%.3f!", CLK_SEC(ref_ts), 
-				fmt_clk(s[1], ref_ts), CLK_FLOAT(offs));
+				FMT_CLK(ref_ts), CLK_FLOAT(offs));
 			break;
 		} 
 
@@ -117,10 +114,9 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		   same polarity of the previous one */
 		if (fll->edge_offs != offs) {
 			ERR("FLL error: edge=%s offs=%s ", 
-				fmt_clk(s[0], fll->edge_offs), 
-				fmt_clk(s[1], offs));
+				FMT_CLK(fll->edge_offs), FMT_CLK(offs));
 			DBG("FLL (t=%d) stopped at %s, increasing edge window!", 
-				CLK_SEC(ref_ts), fmt_clk(s[1], ref_ts));
+				CLK_SEC(ref_ts), FMT_CLK(ref_ts));
 			/* This is an indication of noise 
 			   increase the window size */
 			fll->edge_win = (fll->edge_win * 3) / 2; /* x 1.5 */
@@ -138,7 +134,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 			/* minimum window for initial frequency adjustment */
 			if (clk_dt < FLOAT_CLK(FLL_FREQ_CALC_MIN_WIN))
 				break;
-			DBG("FLL locked at %s!", fmt_clk(s[1], ref_ts));
+			DBG("FLL locked at %s!", FMT_CLK(ref_ts));
 			fll->lock = true;
 		} 
 
@@ -154,11 +150,10 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		freq = dy / dx;
 
 		DBG4("FLL err=%s offs=%s dy=%.6f dx=%.6f", 
-			 fmt_clk(s[0], err), fmt_clk(s[1], offs), dy, dx);
+			 FMT_CLK(err), FMT_CLK(offs), dy, dx);
 
 		DBG("FLL (t=%d) dx=%.1f err=%s drift=%0.9f", 
-			CLK_SEC(ref_ts), dx, fmt_clk(s[0], err), 
-			Q31_FLOAT(fll->drift));
+			CLK_SEC(ref_ts), dx, FMT_CLK(err), Q31_FLOAT(fll->drift));
 
 		//	drift = (2 * fll->drift + FLOAT_Q31(1.0 - freq)) / 2;
 		drift = fll->drift + FLOAT_Q31(1.0 - freq);

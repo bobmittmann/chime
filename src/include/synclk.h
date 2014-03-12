@@ -155,30 +155,33 @@ void synclk_pps(void);
 #define FMT_M  2
 #define FMT_H  3
 
-char * fmt_clk_opt(char * s, int64_t ts, int opt);
-
-
 /* Format a clock timetamp into a string with upt ot microsseconds resolution.
    The string has to be at least 20 characters long.
    The fields to be printed are adjusted according to their content... */
 char * fmt_clk(char * s, int64_t ts);
+#define FMT_CLK(TS) fmt_clk(({char __s[20]; __s;}), (int64_t)(TS))
 
 /* Format a clock timetamp into a string with milliseconds resolution.
    The string has to be at least 18 characters long */
 char * fmt_clk_ms(char * s, int64_t ts);
+#define FMT_CLK_MS(TS) fmt_clk_ms(({char __s[20]; __s;}), (int64_t)(TS))
 
 /* Format a clock timetamp into a string with microsseconds resolution.
    The string has to be at least 20 characters long */
 char * fmt_clk_us(char * s, uint64_t ts);
+#define FMT_CLK_US(TS) fmt_clk_us(({char __s[20]; __s;}), (int64_t)(TS))
 
 /* Format a Q31 number using 3 decimal places */
 char * fmt_q31_3(char * s, int32_t x);
+#define FMT_Q31_3(X) fmt_q31_3(({char __s[8]; __s;}), (int32_t)(X))
 
 /* Format a Q31 number using 6 decimal places */
 char * fmt_q31_6(char * s, int32_t x);
+#define FMT_Q31_6(X) fmt_q31_3(({char __s[12]; __s;}), (int32_t)(X))
 
 /* Format a Q31 number using 9 decimal places */
 char * fmt_q31_9(char * s, int32_t x);
+#define FMT_Q31_9(X) fmt_q31_9(({char __s[12]; __s;}), (int32_t)(X))
 
 /*
  * Converts the calendar time pointed to by tim_p into a broken-down time

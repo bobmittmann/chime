@@ -15,13 +15,17 @@ set tics out nomirror
 set style line 12 lc rgb '#808080' lt 0 lw 1
 set grid back ls 12
 # line styles
-set style line 1 lc rgb '#c01010' pt 0 lt 1 lw 2
-set style line 2 lc rgb '#10c010' pt 0 lt 1 lw 2
-set style line 3 lc rgb '#1010c0' pt 0 lt 1 lw 2
+set style line 1 lc rgb '#c02020' pt 0 lt 1 lw 2
+set style line 2 lc rgb '#20c020' pt 0 lt 1 lw 2
+set style line 3 lc rgb '#2020c0' pt 0 lt 1 lw 2
 set style line 4 lc rgb '#e08010' pt 0 lt 1 lw 2
+set style line 5 lc rgb '#c0c0f0' pt 0 lt 1 lw 2
+
 plot './rtc_time.dat' using 1:2 with lp ls 2 title "RTC", \
-	'./rtc_clk.dat' using 1:2 with lp ls 3 title "Poll", \
-	'./master_clk.dat' using 1:2 with lp ls 1 title "Sys", \
+	'./rtc_clk.dat' using 1:2 with lp ls 5 title "Poll", \
+	'./master_clk.dat' using 1:2 with lp ls 3 title "Sys", \
 	'./master_temp.dat' using 1:2 with lp ls 4 title "Temp" 
-set output
-quit
+
+pause 1
+reread
+

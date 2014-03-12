@@ -268,33 +268,69 @@ static void __chime_comm_hist_add(struct chime_comm * comm, uint64_t delay)
 	comm->cnt++;
 }
 
+bool __chime_var_flush(struct chime_var * var)
+{
+	int i;
+
+	if (var->f_dat == NULL) {
+		char dat_path[PATH_MAX];
+
+		sprintf(dat_path, "./%s.dat", var->name);
+
+		if ((var->f_dat = fopen(dat_path, "w")) == NULL) {
+			ERR("fopen(\"%s\") failed: %s!", dat_path, __strerr());
+			return false;
+		}
+	}
+
+	assert(var->pos < var->cnt);
+
+	if (var->pos == 0) {
+		rewind(var->f_dat);
+	}
+
+	for (i = var->pos; i < var->cnt; ++i) {
+		struct var_rec * rec = &var->rec[i];
+		fprintf(var->f_dat, "%.9f, %.9f\n", rec->t, rec->y);
+	}
+
+	fflush(var->f_dat);
+
+	var->pos = i;
+
+	return true;
+}
+
+static void __chime_var_reset(struct chime_var * var)
+{
+	assert(var != NULL);
+	objpool_lock();
+	var->clk = server.sim.clk;
+	var->cnt = 0;
+	var->pos = 0;
+	objpool_unlock();
+
+	if (var->f_dat != NULL) {
+		fclose(var->f_dat);
+		var->f_dat = NULL;
+	}
+}
+
+
 bool __chime_var_dump(struct chime_var * var)
 {
 	char name[ENTRY_NAME_MAX + 8];
 	char plt_path[PATH_MAX];
-	char dat_path[PATH_MAX];
 	char out_path[PATH_MAX];
+	char dat_path[PATH_MAX];
 	FILE * f;
-	int i;
 
 	strncpy(name, var->name, ENTRY_NAME_MAX);
 	name[ENTRY_NAME_MAX] = '\0';
 
-	sprintf(dat_path, "./%s.dat", name);
 	sprintf(plt_path, "./%s.plt", name);
 	sprintf(out_path, "./%s.png", name);
-
-	if ((f = fopen(dat_path, "w")) == NULL) {
-		ERR("fopen(\"%s\") failed: %s!", dat_path, __strerr());
-		return false;
-	}
-
-	for (i = 0; i < var->cnt; ++i) {
-		struct var_rec * rec = &var->rec[i];
-		fprintf(f, "%.9f, %.9f\n", rec->t, rec->y);
-	}
-
-	fclose(f);
+	sprintf(dat_path, "./%s.dat", name);
 
 	if ((f = fopen(plt_path, "w")) == NULL) {
 		ERR("fopen(\"%s\") failed: %s!", plt_path, __strerr());
@@ -324,18 +360,6 @@ bool __chime_var_dump(struct chime_var * var)
 	fclose(f);
 
 	return true;
-}
-
-/* fprintf(f, "set style line 2 lc rgb '#5e9c36' pt 1 ps 1 lt 1 lw 2\n");
-   */
-
-void __chime_var_reset(struct chime_var * var)
-{
-	assert(var != NULL);
-	objpool_lock();
-	var->clk = server.sim.clk;
-	var->cnt = 0;
-	objpool_unlock();
 }
 
 static double xtal_temp_offs(float tc, float t)
@@ -1584,6 +1608,7 @@ void __chime_req_comm_stat(struct chime_request * req)
 	}
 }
 
+/* Create a variable object */
 void __chime_req_var_create(struct chime_request * req)
 {
 	struct chime_var * var;
@@ -1597,6 +1622,9 @@ void __chime_req_var_create(struct chime_request * req)
 
 	/* insert OID in the var's OID list */
 	u16_list_insert(server.var_oid, req->oid);
+
+	/* reset the variable */
+	__chime_var_reset(var);
 }
 
 void __chime_req_var_dump(struct chime_request * req)
@@ -1608,6 +1636,7 @@ void __chime_req_var_dump(struct chime_request * req)
 
 		var = obj_getinstance(server.var_oid[i]);
 		__chime_var_dump(var);
+		__chime_var_flush(var);
 	}
 }
 
@@ -1873,6 +1902,7 @@ int chime_server_start(const char * name)
 
 	assert(OBJPOOL_OBJ_SIZE_MAX >= sizeof(struct chime_comm));
 	assert(OBJPOOL_OBJ_SIZE_MAX >= sizeof(struct chime_node));
+	assert(OBJPOOL_OBJ_SIZE_MAX >= sizeof(struct chime_var));
 
 	__mutex_init(&server.mutex);
 	__mutex_lock(server.mutex);

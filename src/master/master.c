@@ -24,7 +24,6 @@
 #include <time.h>
 #include <inttypes.h>
 
-
 #include "chime.h"
 #include "synclk.h"
 #include "debug.h"
@@ -112,12 +111,9 @@ struct clock_fll fll;
    It should be called at RTC_POLL_FREQ_HZ frequency. */
 void rtc_poll(void)
 {
+	struct rtc_tm rtm; /* time structure from the RTC chip */
 	uint64_t rtc_ts;
-	char s[3][64];
-	/* time structure from the RTC chip */
-	struct rtc_tm rtm;
 	int64_t offs;
-	(void)s;
 
 	/* read from the RTC Chip */
 	rtc_read(&rtm);
@@ -135,15 +131,15 @@ void rtc_poll(void)
 	/* Convert the RTC time structure into clock timestamp */
 	rtc_ts = rtc_timestamp(&rtm);
 	
-	DBG1("rtc=%s clk=%s", fmt_clk(s[0], rtc_ts), fmt_clk(s[1], rtc_clk.ts));
+	DBG1("rtc=%s clk=%s", FMT_CLK(rtc_ts), FMT_CLK(rtc_clk.ts));
 
 	offs = (int64_t)(rtc_ts - rtc_clk.ts);
 
 	if ((offs >= RTC_OFFS_MAX) || (offs <= -RTC_OFFS_MAX)) {
 		/* if we are off by too much step the clock */
 
-		DBG("clk=%s offs=%s !STEP!", fmt_clk(s[0], rtc_ts), 
-			fmt_clk(s[1], offs));
+		DBG("clk=%s offs=%s !STEP!", FMT_CLK(rtc_ts), 
+			FMT_CLK(offs));
 
 		DBG5("STEP clk=%"PRIu64" offs=%"PRId64" max=%"PRId64, 
 			 rtc_ts, offs, RTC_OFFS_MAX);
@@ -154,8 +150,7 @@ void rtc_poll(void)
 		/* reset the FLL */
 		fll_reset(&fll, rtc_clk.ts);
 	} else { 
-		DBG2("clk=%s offs=%s", fmt_clk_ms(s[0], rtc_ts), 
-			 fmt_clk_ms(s[1], offs));
+		DBG2("clk=%s offs=%s", FMT_CLK(rtc_ts), FMT_CLK(offs));
 		rtc_clk.ts += offs;
 
 		fll_step(&fll, rtc_clk.ts, offs);
@@ -207,7 +202,7 @@ static __thread int sim_minutes = SIM_TIME_HOURS * 60;
 static __thread float sim_temperature;
 static __thread float sim_temp_rate;
 
-void abort_timer_isr(void)
+void sim_timer_isr(void)
 {
 	if (--sim_minutes == 0) {
 		chime_sim_vars_dump();
@@ -254,13 +249,14 @@ void cpu_master(void)
 	master_temp_var = chime_var_open("master_temp");
 	master_clk_var = chime_var_open("master_clk");
 
+	/* set an 1 minute interval timer for simulation  */
+	chime_tmr_init(3, sim_timer_isr, 60000000, 60000000);
+
 	/* initialize RTC clock */
 	rtc_clock_init();
 
 	/* initialize local clock */
 	local_clock_init();
-
-	chime_tmr_init(3, abort_timer_isr, 60000000, 60000000);
 
 	pkt.sequence = 0;
 
@@ -282,22 +278,19 @@ void cpu_master(void)
 			}	
 		}
 
-#if 0
-
 		if (++cnt == SYNCLK_POLL) {
-			char s[3][64];
+			uint64_t local;
 	
 			local = clock_timestamp(&local_clock);
 
 			//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
-			tracef(T_INF, "clk=%s", tsfmt(s[0], local));
+			tracef(T_INF, "clk=%s", FMT_CLK(local));
 
 			pkt.timestamp = local;
 			chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
 
 			cnt = 0;
 		}
-#endif
 	}
 }
 

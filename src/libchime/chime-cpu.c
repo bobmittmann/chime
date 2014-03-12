@@ -542,9 +542,11 @@ static int __var_open(const char * name)
 	objpool_lock();
 	strncpy(var->name, name, ENTRY_NAME_MAX);
 	var->clk = 0;
+	var->pos = 0;
 	var->cnt = 0;
 	var->len = 0;
 	var->rec = NULL;
+	var->f_dat = NULL;
 	objpool_unlock();
 
 	if (__cpu_req_send(CHIME_REQ_VAR_CREATE, oid)) {

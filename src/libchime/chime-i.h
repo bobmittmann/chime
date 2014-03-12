@@ -480,10 +480,11 @@ struct chime_var {
 	char name[ENTRY_NAME_MAX];
 	double time;
 	uint64_t clk;
+	uint32_t pos;
 	uint32_t cnt;
 	uint32_t len;
+	FILE * f_dat;
 	struct var_rec * rec;
-	__fd_t fd;
 };
 
 /*****************************************************************************
