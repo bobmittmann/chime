@@ -901,3 +901,123 @@ int __thread_join(__thread_t thread, void ** value_ptr)
 #endif
 }
 
+/*****************************************************************************
+ * Memory Mapped File
+ *****************************************************************************/
+
+int __create(__fd_t * pfd, const char * name, size_t size)
+{
+	__fd_t fd;
+	int ret;
+	char path[128];
+
+#ifdef _WIN32
+	sprintf(path, "%s", name);
+
+//	fprintf(stderr, "%s: path=\"%s\" size=%d\n", __func__, path, (int)size);
+//	fflush(stderr);
+// Create the file. Open it "Create Always" to overwrite any
+// existing file. 
+	fd = CreateFile(path,
+					   GENERIC_READ | GENERIC_WRITE,
+					   0,
+					   NULL,
+					   CREATE_ALWAYS,
+					   FILE_ATTRIBUTE_NORMAL,
+					   NULL);
+
+	ret = (fd == INVALID_HANDLE_VALUE) ? -1 : 0;
+
+//	DisplayError(TEXT("CreateFileMapping"), GetLastError());
+
+#else
+	sprintf(path, "%s", name);
+
+	/* create a new file */
+	fd = open(path, O_RDWR | O_CREAT | O_EXCL, 
+			  S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH);
+
+	ret = fd;
+
+#endif
+	*pfd = fd;
+
+	return ret;
+}
+
+void * __mmap(__fd_t fd, size_t size)
+{
+	void * ptr;
+
+#ifdef _WIN32
+	HANDLE hMapFile;
+
+//	fprintf(stderr, "%s: shm=%p\n", __func__, shm);
+//	fflush(stderr);
+	hMapFile = CreateFileMapping(
+		fd,    // use paging file
+		NULL,                    // default security
+		PAGE_READWRITE | SEC_COMMIT,          // read/write access
+		0,                       // maximum object size (high-order DWORD)
+		size,                	// maximum object size (low-order DWORD)
+		NULL);                 // name of mapping object
+
+	ptr = (LPTSTR) MapViewOfFile(hMapFile, 
+								 FILE_MAP_ALL_ACCESS,  // read/write permission
+								 0, 0, 0);
+#else
+
+//	fprintf(stderr, "%s: size=%d\n", __func__, (int)sb.st_size);
+//	fflush(stderr);
+
+	ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+
+	if (ptr == (void *)-1)
+		ptr = NULL;
+#endif
+	return ptr;
+}
+
+
+int __msync(__fd_t fd, void * ptr)
+{
+	int ret;
+
+#ifdef _WIN32
+	ret = FlushViewOfFile(ptr, 0) ? 0 : -1;
+#else
+	struct stat sb;
+
+	fstat(fd, &sb);
+
+	ret = msync(ptr, sb.st_size, MS_SYNC);
+#endif
+	return ret;
+}
+
+
+int __munmap(__fd_t fd, void * ptr)
+{
+	int ret;
+
+#ifdef _WIN32
+	ret = UnmapViewOfFile(ptr) ? 0 : -1;
+#else
+	struct stat sb;
+
+	fstat(fd, &sb);
+
+	ret = munmap(ptr, sb.st_size);
+#endif
+	return ret;
+}
+
+void __close(__fd_t fd)
+{
+#ifdef _WIN32
+	CloseHandle(fd);
+#else
+	close(fd);
+#endif
+}
+

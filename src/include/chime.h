@@ -138,7 +138,13 @@ uint32_t chime_cpu_cycles(void);
 
 double chime_cpu_time(void);
 
+bool chime_cpu_temp_set(float temp);
+
 int chime_cpu_var_open(const char * name);
+
+float chime_cpu_freq_get(void);
+
+float chime_cpu_ppm_get(void);
 
 bool tracef(int lvl, const char * __fmt, ...) 
 	__attribute__ ((format (printf, 2, 3)));

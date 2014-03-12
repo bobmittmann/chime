@@ -52,12 +52,14 @@ typedef HANDLE __shm_t;
 typedef HANDLE __mutex_t;
 typedef HANDLE __sem_t;
 typedef HANDLE __thread_t;
+typedef HANDLE __fd_t;
 #else
 typedef mqd_t __mq_t;
 typedef int __shm_t;
 typedef sem_t * __mutex_t;
 typedef sem_t * __sem_t;
 typedef pthread_t * __thread_t;
+typedef int __fd_t;
 #endif
 
 #define OBJPOOL_OBJ_SIZE_MAX (1024 - 4)
@@ -481,6 +483,7 @@ struct chime_var {
 	uint32_t cnt;
 	uint32_t len;
 	struct var_rec * rec;
+	__fd_t fd;
 };
 
 /*****************************************************************************

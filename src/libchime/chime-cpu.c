@@ -615,3 +615,22 @@ double chime_cpu_time(void)
 	return cpu.node->time;
 }
 
+bool chime_cpu_temp_set(float temp) 
+{
+	DBG("<%d> temp=%.2f dg.C", cpu.node_id, temp);
+
+	return __cpu_req_float_set(CHIME_REQ_SIM_TEMP_SET, 0, temp);
+}
+
+float chime_cpu_freq_get(void) 
+{
+	return (double)SEC / cpu.node->dt;
+}		
+
+float chime_cpu_ppm_get(void) 
+{
+	double freq = (double)SEC / cpu.node->dt;
+
+	return 1000000 - freq;
+}		
+

@@ -29,36 +29,232 @@
  * utility functions 
  ****************************************************************************/
 
-int ts_sprint(char * s, uint64_t ts)
+/* format a clock timestamp, mircosseconds resolution  */
+char * fmt_clk_opt(char * s, int64_t ts, int opt)
 {
-	time_t t;
-	int sec;
-	int min;
-	int hour;
-	int days;
-	int ms;
+	bool neg = false;
+	int32_t sec;
+	int32_t us;
+	int32_t min;
+	int32_t hour;
+	int32_t days;
 
-	ms = ((ts & 0xffffffffLL) * 1000) >> 32;
-	t = ts >> 32;
-	min = t / 60;
-	sec = t - (min * 60);
+	if (ts < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		ts = -ts;
+	}
+
+	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	sec = ts >> 32;
+	min = sec / 60;
+	sec -= min * 60;
 	hour = min / 60;
-	min -= (hour * 60);
+	min -= hour * 60;
 	days = hour / 24;
-	hour -= (days * 24);
+	hour -= days * 24;
 
-	return sprintf(s, "%2d:%02d:%02d.%03d", hour, min, sec, ms);
-}
+	switch (opt) {
+	case FMT_H:
+		if (neg)
+			hour = -hour;
+		sprintf(s, "%3d:%02d:%02d.%03d", hour, min, sec, us / 1000);
+		break;
+	case FMT_M:
+		if (neg)
+			min = -min;
+		sprintf(s, "%02d:%02d.%03d", min, sec, us / 1000);
+		break;
+	case FMT_S:
+		if (neg)
+			sec = -sec;
+		sprintf(s, "%02d.%06d", sec, us);
+		break;
+	default:
+		if (neg)
+			sprintf(s, "-.%06d", us);
+		else
+			sprintf(s, ".%06d", us);
+		break;
+	}
 
-char * tsfmt(char * s, uint64_t ts)
-{
-	ts_sprint(s, ts);
 	return s;
 }
 
-int frac_sprint(char * s, int32_t frac, int n)
+char * fmt_clk(char * s, int64_t ts)
 {
-	return sprintf(s, "%.6f", FRAC2D(frac));
+	bool neg = false;
+	int32_t sec;
+	int32_t us;
+	int32_t min;
+	int32_t hour;
+	int32_t days;
+
+	if (ts < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		ts = -ts;
+	}
+
+	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	sec = ts >> 32;
+	min = sec / 60;
+	sec -= min * 60;
+	hour = min / 60;
+	min -= hour * 60;
+	days = hour / 24;
+	hour -= days * 24;
+
+	if ((days > 0) || (hour > 0)) {
+		if (neg)
+			hour = -hour;
+		sprintf(s, "%3d:%02d:%02d.%03d", hour, min, sec, us / 1000);
+	} else if (min > 0) {
+		if (neg)
+			min = -min;
+		sprintf(s, "%02d:%02d.%03d", min, sec, us / 1000);
+	} else if (sec > 0) {
+		if (neg)
+			sec = -sec;
+		sprintf(s, "%02d.%06d", sec, us);
+	} else if (neg)
+		sprintf(s, "-.%06d", us);
+	else
+		sprintf(s, ".%06d", us);
+
+	return s;
+}
+
+
+/* format a clock timestamp, milliseconds resolution  */
+char * fmt_clk_ms(char * s, int64_t ts)
+{
+	bool neg = false;
+	uint32_t sec;
+	uint32_t ms;
+	int min;
+	int hour;
+	int days;
+
+	if (ts < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		ts = -ts;
+	}
+
+	ms = ((ts & 0xffffffffLL) * 1000) >> 32;
+	sec = ts >> 32;
+	min = sec / 60;
+	sec -= min * 60;
+	hour = min / 60;
+	min -= hour * 60;
+	days = hour / 24;
+	hour -= days * 24;
+
+	if (neg)
+		hour = -hour;
+
+	sprintf(s, "%3d:%02d:%02d.%03d", hour, min, sec, ms);
+
+	return s;
+}
+
+/* format a clock timestamp, mircosseconds resolution  */
+char * __fmt_clk_us(char * s, int64_t ts)
+{
+	bool neg = false;
+	uint32_t sec;
+	uint32_t us;
+	int min;
+	int hour;
+	int days;
+
+	if (ts < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		ts = -ts;
+	}
+
+	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	sec = ts >> 32;
+	min = sec / 60;
+	sec -= min * 60;
+	hour = min / 60;
+	min -= hour * 60;
+	days = hour / 24;
+	hour -= days * 24;
+
+	if (neg)
+		hour = -hour;
+
+	sprintf(s, "%3d:%02d:%02d.%06d", hour, min, sec, us);
+
+	return s;
+}
+
+
+
+char * fmt_q31_3(char * s, int32_t x)
+{
+	bool neg = false;
+	int32_t y;
+
+	if (x < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		x = -x;
+	}
+
+	y = ((int64_t)x * 2000LL + (1LL << 31)) >> 32;
+
+	if (neg)
+		sprintf(s, "0.%03d", y);
+	else
+		sprintf(s, "-0.%03d", y);
+
+	return s;
+}
+
+char * fmt_q31_6(char * s, int32_t x)
+{
+	bool neg = false;
+	int32_t y;
+
+	if (x < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		x = -x;
+	}
+
+	y = ((int64_t)x * 2000000LL + (1LL << 31)) >> 32;
+
+	if (neg)
+		sprintf(s, "0.%06d", y);
+	else
+		sprintf(s, "-0.%06d", y);
+
+	return s;
+}
+
+char * fmt_q31_9(char * s, int32_t x)
+{
+	bool neg = false;
+	int32_t y;
+
+	if (x < 0) {
+		/* negative timestamp. Get the absolute value and store the tsignal */
+		neg = true;
+		x = -x;
+	}
+
+	y = ((int64_t)x * 2000000000LL + (1LL << 31)) >> 32;
+
+	if (neg)
+		sprintf(s, "0.%09d", y);
+	else
+		sprintf(s, "-0.%09d", y);
+
+	return s;
 }
 
 

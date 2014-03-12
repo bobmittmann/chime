@@ -26,6 +26,31 @@
 #include "synclk.h"
 #include "chime.h"
 
+#define FRAC       4294967296.             /* 2^32 as a double */
+#define D2LFP(a)   ((int64_t)((a) * FRAC))  /* NTP timestamp */
+#define LFP2D(a)   ((double)(a) / FRAC)
+#define TS2D(X)   ((double)(X) / FRAC)
+#define D2TS(X)   ((uint64_t)((X) * FRAC))
+
+#define DT2D(X)   ((double)(int64_t)(X) / FRAC)
+#define D2DT(X)   ((int64_t)((X) * FRAC))
+
+
+#define D2FRAC(a)   ((int32_t)((a) * (1 << 31))  
+#define FRAC2D(a)   ((double)(a) / (1 << 31))
+
+
+#define DT2FLOAT(X)     ((float)(int64_t)(X) / FRAC)
+#define FLOAT2DT(X)     ((int64_t)((X) * FRAC))
+
+#define FLOAT2ITV(X)     ((int64_t)((X) * 4294967296.))
+#define ITV2FLOAT(X)     ((float)(int64_t)(X) / 4294967296.)
+
+#define FLOAT2FRAC(X)   ((int32_t)((X) * 2147483648.)) 
+#define FRAC2FLOAT(X)   ((float)(X) / 2147483648.)
+
+#define CLK_SECS(X)  ((int64_t)((X) * 4294967296.))
+
 
 #ifndef ENABLE_FREQ_ADJ
 #define ENABLE_FREQ_ADJ 0
@@ -129,6 +154,8 @@ struct synclk_peer {
 
 static struct {
 	struct clock * sys_clk;
+	struct clock_pll pll;
+
 	uint32_t current_time;    /* seconds since startup */
 	struct synclk_peer peer;
 
@@ -341,7 +368,7 @@ void step_systime(double fp_offset)
 	offs_adj = D2LFP(fp_offset);
 	if (offs_adj != 0) {
 		DBG3("offs adj=%f --> %" PRId64 ".", fp_offset, offs_adj);
-		clock_offs_adjust(sync.sys_clk, offs_adj);
+		clock_step(sync.sys_clk, offs_adj);
 	}
 }
 
@@ -387,10 +414,11 @@ double set_freq(double freq, double offset)
 
 	sync.drift_comp = freq;
 
-	freq_adj = Q31(freq);
-	offs_adj = Q31(offset);
+	freq_adj = FLOAT_Q31(freq);
+	offs_adj = FLOAT_Q31(offset);
 	
-	drift_comp  = clock_freq_adjust(sync.sys_clk, freq_adj, offs_adj);
+	clock_step(sync.sys_clk, offs_adj);
+	drift_comp  = clock_drift_comp(sync.sys_clk, freq_adj);
 
 	INF("drift_comp=%d.", drift_comp);
 
@@ -583,23 +611,24 @@ int synclk_local_clock(double fp_offset)
 		int32_t esterror;
 		int32_t drift_comp;
 
-		offset = Q31(sync.clock_offset);
+		offset = FLOAT_Q31(sync.clock_offset);
 		(void)offset;
 		(void)drift_comp;
 		constant = mu;
 		(void)constant;
-		esterror = Q31(sync.clock_jitter);
+		esterror = FLOAT_Q31(sync.clock_jitter);
 		(void)esterror;
 
 		DBG3("off %.6f,%.6f jit %.6f,%.6f", 
-			sync.clock_offset, Q31F(offset), 
-			sync.clock_jitter, Q31F(esterror));
+			sync.clock_offset, Q31_FLOAT(offset), 
+			sync.clock_jitter, Q31_FLOAT(esterror));
 
 		DBG3("mu=%f constant=%d", mu, constant); 
 
-		drift_comp = clock_phase_adjust(sync.sys_clk, offset, constant);
+		drift_comp = pll_phase_adjust(&sync.pll, offset, constant);
+		drift_comp = clock_drift_comp(sync.sys_clk, drift_comp);
 
-		clock_frequency = Q31F(drift_comp);
+		clock_frequency = Q31_FLOAT(drift_comp);
 		DBG1("freq=%.8f", clock_frequency); 
 	}
 #endif

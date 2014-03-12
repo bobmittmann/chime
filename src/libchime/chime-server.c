@@ -1293,14 +1293,61 @@ void __chime_node_join(struct chime_request * req)
 
 }
 
+#define EVENT_PER_NODE_MAX 2048
+
 void __chime_req_temp_set(struct chime_request * req)
 {
+	struct chime_event evt[EVENT_PER_NODE_MAX];
+	uint64_t clk[EVENT_PER_NODE_MAX];
 	int node_id = req->node_id;
 	float t = req->temp.val;
 	struct chime_node * node = server.node[node_id];
+	double old_period;
+	double old_dt;
+	int i;
+	int n;
+
+	old_dt = node->dt;
+	(void)old_dt;
+	old_period = node->period;
+	(void)old_period;
 
 	node->temperature = t;
 	node->dt = node->dres * xtal_temp_offs(node->tc, node->temperature);
+	node->period = (double)node->dt / (double)SEC;
+
+	/* update clock on pending events !!! */
+	i = 1;
+	n = 0;
+	while (heap_pick(server.heap, i, &clk[n], &evt[n])) {
+		if (evt[n].node_id == node_id) {
+			DBG("<%d> updating event %s", node_id, __evt_opc_nm[evt[n].opc]);
+			heap_delete(server.heap, i);
+			n++;
+			if (n == EVENT_PER_NODE_MAX) {
+				ERR("<%d> events per node limit!", node_id);
+				assert(0);
+				break;
+			}
+		} else {
+			i++;
+		}
+	}
+
+	for (i = 0; i < n; ++i) {
+		int32_t cycles;
+
+		cycles = (clk[i] - node->clk) / old_dt;
+
+		/* update evnt clock */
+		clk[i] = node->clk + (node->dt * cycles);
+
+		/* insert into the clock simulation heap */
+		assert((int64_t)(clk[i] - server.heap->clk) >= 0);
+		heap_insert_min(server.heap, clk[i], &evt[i]);
+	}
+
+	DBG("<%d> %d events updated", node_id, n);
 
 #if DEBUG
 	{
