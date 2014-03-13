@@ -282,8 +282,11 @@ bool __chime_var_flush(struct chime_var * var)
 			return false;
 		}
 	}
-
-	assert(var->pos < var->cnt);
+	
+	if (var->pos > var->cnt) {
+		ERR("var->pos(%d) <= var->cnt(%d)!", var->pos, var->cnt);
+		assert(var->pos <= var->cnt);
+	}
 
 	if (var->pos == 0) {
 		rewind(var->f_dat);
@@ -388,17 +391,71 @@ static void __chime_node_free(int id)
 	__bmp_bit_free(server.node_alloc_bmp, CHIME_NODE_BMP_LEN, id);
 }
 
+/* Clear events targeted to node_id */
+static int __chime_node_clear_events(int node_id)
+{
+	struct chime_event evt;
+	int i;
+	int n;
+
+	/* remove pending events !!! */
+	i = 1;
+	n = 0;
+	while (heap_pick(server.heap, i, NULL, &evt)) {
+		if (evt.node_id == node_id) {
+			DBG("<%d> deleting event %s", evt.node_id, __evt_opc_nm[evt.opc]);
+			heap_delete(server.heap, i);
+			if (evt.opc == CHIME_EVT_RCV) {
+				DBG("<%d> releasing object OID=%d", evt.node_id, evt.buf.oid);
+				obj_release(evt.buf.oid);
+			}
+			n++;
+		} else {
+			i++;
+		}
+	}
+
+	if (n > 0) {
+		DBG("<%d> %d events deleted", node_id, n);
+	}
+
+	return n;
+}
+
+/* Remove node_id from all comms */
+static int __chime_node_clear_comms(int node_id)
+{
+	int n = 0;
+	int i;
+
+	/* remove from comm lists !!! */
+	for (i = 1; i <= LIST_LEN(server.comm_oid); ++i) {
+		struct chime_comm * comm;
+
+		comm = obj_getinstance(server.comm_oid[i]);
+		objpool_lock();
+		if (u8_list_contains(comm->node_lst, node_id)) {
+			INF("<%d> removing from COMM %d", node_id, server.comm_oid[i]);
+			u8_list_remove(comm->node_lst, node_id);
+			n++;
+		}
+		objpool_unlock();
+	}
+
+	if (n > 0) {
+		DBG("<%d> %d COMMs cleared", node_id, n);
+	}
+
+	return n;
+}
+
 /* remove a node from simulation 
    return the state of the breakpoint flag  
  */
-
 static bool __chime_node_remove(int node_id)
 {
 	struct chime_node * node;
-	struct chime_event evt;
 	bool bkpt;
-	int i;
-	int n;
 
 	node = __node_getinstance(node_id);
 
@@ -419,40 +476,9 @@ static bool __chime_node_remove(int node_id)
 	__chime_node_free(node_id);
 
 //	heap_dump(stderr, server.heap);
+	__chime_node_clear_events(node_id);
 
-	/* remove pending events !!! */
-	i = 1;
-	n = 0;
-	while (heap_pick(server.heap, i, NULL, &evt)) {
-		if (evt.node_id == node_id) {
-			DBG("<%d> deleting event %s", evt.node_id, __evt_opc_nm[evt.opc]);
-			heap_delete(server.heap, i);
-			if (evt.opc == CHIME_EVT_RCV) {
-				DBG("<%d> releasing object OID=%d", evt.node_id, evt.buf.oid);
-				obj_release(evt.buf.oid);
-			}
-			n++;
-		} else {
-			i++;
-		}
-	}
-
-	if (n > 0) {
-		DBG("<%d> %d events deleted", evt.node_id, n);
-	}
-
-	/* remove from comm lists !!! */
-	for (i = 1; i <= LIST_LEN(server.comm_oid); ++i) {
-		struct chime_comm * comm;
-
-		comm = obj_getinstance(server.comm_oid[i]);
-		objpool_lock();
-		if (u8_list_contains(comm->node_lst, node_id)) {
-			INF("<%d> removing from COMM %d", node_id, server.comm_oid[i]);
-			u8_list_remove(comm->node_lst, node_id);
-		}
-		objpool_unlock();
-	}
+	__chime_node_clear_comms(node_id);
 	
 	return bkpt;
 }
@@ -1188,15 +1214,41 @@ void __chime_req_comm_xmt(struct chime_request * req)
 //		heap_dump(stderr, server.heap);
 }
 
+void __chime_req_cpu_halt(struct chime_request * req)
+{
+	int node_id = req->node_id;
+	struct chime_node * node;
+//	bool bkpt;
+
+	/* sanity check */
+    if ((node = server.node[node_id]) == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		return;
+	}
+
+	assert(node->bkpt == false);
+
+//	bkpt = node->bkpt;
+	INF("<%d> CPU halted!", node_id);
+
+	__chime_node_clear_events(node_id);
+
+	__chime_node_clear_comms(node_id);
+
+//	heap_dump(stderr, server.heap);
+	__chime_node_clear_events(node_id);
+
+	__chime_node_clear_comms(node_id);
+}
+
 void __chime_req_bye(struct chime_request * req)
 {
 	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
+	struct chime_node * node;
 
 	/* sanity check */
-    if (node == NULL) {
+    if ((node = server.node[node_id]) == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
-//		assert(node != NULL);
 		return;
 	}
 
@@ -1212,6 +1264,7 @@ void __chime_req_bye(struct chime_request * req)
 			DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 		}
 	}
+
 }
 
 void __chime_req_abort(struct chime_request * req)
@@ -1727,6 +1780,10 @@ static int chime_ctrl_task(void * arg)
 
 		case CHIME_REQ_JOIN:
 			__chime_node_join(req);
+			break;
+
+		case CHIME_REQ_CPU_HALT:
+			__chime_req_cpu_halt(req);
 			break;
 
 		case CHIME_REQ_BYE:

@@ -485,6 +485,20 @@ void chime_cpu_step(uint32_t cycles)
 	}
 }
 
+void chime_cpu_halt(void)
+{
+	struct chime_req_step req;
+
+	req.hdr.node_id = cpu.node_id;
+	req.hdr.opc = CHIME_REQ_CPU_HALT;
+	req.hdr.oid = 0;
+
+	if (__mq_send(cpu.xmt_mq, &req, CHIME_REQ_STEP_LEN) < 0) {
+		ERR("__mq_send() failed: %s.", __strerr());
+		__cpu_except(EXCEPT_MQ_SEND);
+	} 
+}
+
 void chime_cpu_self_destroy(void) 
 {
 	__cpu_except(EXCEPT_SELF_DESTROYED);

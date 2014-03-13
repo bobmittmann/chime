@@ -130,6 +130,8 @@ void chime_cpu_wait(void);
 
 void chime_cpu_self_destroy(void);
 
+void chime_cpu_halt(void);
+
 const char * chime_cpu_name(void);
 
 int chime_cpu_id(void);

@@ -55,7 +55,8 @@ int master_temp_var;
 #define SIM_POLL_JITTER_US 5000
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
-#define SIM_TIME_HOURS 6
+
+#define SIM_TIME_HOURS 2
 
 /****************************************************************************
  * Local Clock
@@ -157,8 +158,6 @@ void rtc_poll(void)
 	}
 
 	chime_var_rec(rtc_clk_var, CLK_DOUBLE(rtc_clk.ts) - chime_cpu_time());
-	chime_var_rec(master_clk_var, 
-				  CLK_DOUBLE(clock_time_get(&local_clock)) - chime_cpu_time());
 
 }
 
@@ -194,7 +193,6 @@ void rtc_clock_init(void)
 	}
 }
 
-
 /****************************************************************************
  * Main CPU simulation
  ****************************************************************************/
@@ -205,8 +203,10 @@ static __thread float sim_temp_rate;
 void sim_timer_isr(void)
 {
 	if (--sim_minutes == 0) {
+		tracef(T_DBG, "Halting the simulation.");
 		chime_sim_vars_dump();
-		chime_cpu_self_destroy();
+		chime_cpu_halt();
+//		chime_cpu_self_destroy();
 	}
 
 	DBG1("temp=%.2f dg.C clk=%.1f ppm", 
@@ -232,6 +232,7 @@ void sim_timer_isr(void)
 void cpu_master(void)
 {
 	struct synclk_pkt pkt;
+	uint64_t local;
 	int cnt = 0;
 
 	(void)cnt;
@@ -261,36 +262,36 @@ void cpu_master(void)
 	pkt.sequence = 0;
 
 	for (;;) {
-		for (;;) { /* XXX: simulation */
-			chime_cpu_wait();
+		chime_cpu_wait();
 
-			if (pps_flag) {
-				pps_flag = false;
-				break;
-			}	
+		/* PPS .... */
+		if (pps_flag) { 
+			pps_flag = false;
 
-			if (rtc_poll_flag) {
-				rtc_poll_flag = false;
+			local = clock_time_get(&local_clock);
+			chime_var_rec(master_clk_var, CLK_DOUBLE(local) - 
+						  chime_cpu_time());
 
-				/* simulate a random delay */
-				chime_cpu_step(rand() % SIM_POLL_JITTER_US);
-				rtc_poll();
-			}	
+			if (++cnt == SYNCLK_POLL) {
+
+				//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
+				tracef(T_INF, "clk=%s", FMT_CLK(local));
+
+				pkt.timestamp = local;
+				chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
+
+				cnt = 0;
+			}
 		}
 
-		if (++cnt == SYNCLK_POLL) {
-			uint64_t local;
-	
-			local = clock_timestamp(&local_clock);
+		/* RTC polling .... */
+		if (rtc_poll_flag) {
+			rtc_poll_flag = false;
 
-			//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
-			tracef(T_INF, "clk=%s", FMT_CLK(local));
-
-			pkt.timestamp = local;
-			chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
-
-			cnt = 0;
-		}
+			/* simulate a random delay */
+			chime_cpu_step(rand() % SIM_POLL_JITTER_US);
+			rtc_poll();
+		}	
 	}
 }
 
@@ -346,7 +347,7 @@ int main(int argc, char *argv[])
 		- offset +-25 ppm  
 		- temp drift: -0.025 ppm  
 	 */
-	if (chime_cpu_create(+25, -0.025, cpu_master) < 0) {
+	if (chime_cpu_create(-200, -0.10, cpu_master) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;
@@ -354,7 +355,7 @@ int main(int argc, char *argv[])
 
 	rtc_sim_init();
 
-	chime_reset_all();
+//	chime_reset_all();
 
 	chime_except_catch(NULL);
 

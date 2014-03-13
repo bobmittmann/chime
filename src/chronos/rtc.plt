@@ -21,11 +21,13 @@ set style line 3 lc rgb '#2020c0' pt 0 lt 1 lw 2
 set style line 4 lc rgb '#e08010' pt 0 lt 1 lw 2
 set style line 5 lc rgb '#c0c0f0' pt 0 lt 1 lw 2
 
-plot './rtc_time.dat' using 1:2 with lp ls 2 title "RTC", \
-	'./rtc_clk.dat' using 1:2 with lp ls 5 title "Poll", \
-	'./master_clk.dat' using 1:2 with lp ls 3 title "Sys", \
-	'./master_temp.dat' using 1:2 with lp ls 4 title "Temp" 
+plot './rtc_time.dat' using 1:2 with lp ls 2 title "RTC Time", \
+	'./rtc_clk.dat' using 1:2 with lp ls 5 title "RTC Clk", \
+	'./master_clk.dat' using 1:2 with lp ls 3 title "Master Clk", \
+	'./slave_clk.dat' using 1:2 with lp ls 1 title "Slave Clk", \
+	'./master_temp.dat' using 1:2 with lp ls 4 title "Master Temp" 
 
-pause 1
+quit
+pause 2
 reread
 

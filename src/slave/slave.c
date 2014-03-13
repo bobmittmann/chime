@@ -27,25 +27,71 @@
 #include "synclk.h"
 #include "debug.h"
 
+/****************************************************************************
+ * XXX: Simultaion 
+ ****************************************************************************/
+
+static volatile bool pps_flag;
+volatile bool rtc_poll_flag; 
+
+void rtc_poll_tmr_isr(void)
+{
+	rtc_poll_flag = true;
+}
+
+int slave_clk_var;
+int slave_temp_var;
+
+#define LOCAL_CLOCK_TMR 0
+
+#define ARCNET_COMM 0
+
+#define SIM_POLL_JITTER_US 5000
+#define SIM_TEMP_MIN -20
+#define SIM_TEMP_MAX 70
+#define SIM_TIME_HOURS 6
+#define SIM_DUMMY_NETWORK_NODES 0
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-#define CLOCK_FREQ_HZ 200
+#define LOCAL_CLOCK_FREQ_HZ 9
 
 static struct clock local_clock;
 
-void clock_timer_isr(void)
+/* Clock timeer interrupt handler */
+void local_clock_tmr_isr(void)
 {
-	DBG3("tick");
-
 	if (clock_tick(&local_clock))
-		synclk_pps();
+		pps_flag = true;
+}
+
+void local_clock_init(void)
+{
+	/* initialize the clock structure */
+	clock_init(&local_clock, LOCAL_CLOCK_FREQ_HZ, LOCAL_CLOCK_TMR);
+
+	{ /* XXX: simultaion */
+		unsigned int period_us;
+
+		/* start the clock tick timer */
+		period_us = 1000000 / LOCAL_CLOCK_FREQ_HZ;
+		chime_tmr_init(LOCAL_CLOCK_TMR, local_clock_tmr_isr, 
+					   period_us, period_us);
+	}
+}
+
+void local_clock_pps(void)
+{
+	uint64_t ts;
+
+	ts = clock_timestamp(&local_clock);
+	chime_var_rec(slave_clk_var, CLK_DOUBLE(ts) - chime_cpu_time());
 }
 
 /****************************************************************************
- * Local RTC chip connection 
+ * ARCnet
  ****************************************************************************/
 
 #define ARCNET_DELAY 0.15
@@ -65,9 +111,7 @@ void arcnet_rcv_isr(void)
 
 void cpu_slave(void)
 {
-	unsigned int period_us;
 	struct synclk_pkt pkt;
-	int var;
 	
 	tracef(T_DBG, "Slave reset...");
 	printf(" - Reset: ID=%02x\n", chime_cpu_id());
@@ -77,31 +121,31 @@ void cpu_slave(void)
 	chime_comm_attach(ARCNET_COMM, "ARCnet", arcnet_rcv_isr, NULL, NULL);
 
 	/* open a simulation variable recorder */
-	var = chime_var_open("slave_time");
-
-	/* initialize local clock */
-	clock_init(&local_clock, CLOCK_FREQ_HZ);
-
-//	clock_offs_adjust(&local_clock, CLK_SECS(-0.050));
+	slave_clk_var = chime_var_open("slave_clk");
 
 	/* initialize clock synchronization */
 	synclk_init(&local_clock, ARCNET_DELAY, REMOTE_PRECISION);
 
-	/* start the clock tick timer */
-	period_us = 1000000 / CLOCK_FREQ_HZ;
-	chime_tmr_init(0, clock_timer_isr, period_us, period_us);
+	/* initialize local clock */
+	local_clock_init();
+
+	clock_step(&local_clock, FLOAT_CLK(-0.050));
 
 	arcnet_pkt_rcvd = false;
 	for (;;) {
-		do {
-			chime_cpu_wait();
-		} while (!arcnet_pkt_rcvd);
+		chime_cpu_wait();
+
+		/* PPS .... */
+		if (pps_flag) { 
+			pps_flag = false;
+
+			local_clock_pps();
+		}
 
 		if (arcnet_pkt_rcvd) {
 			uint64_t local;
 			uint64_t remote;
 			int64_t diff;
-			char s[3][64];
 
 			/* read from ARCNET*/
 			chime_comm_read(ARCNET_COMM, &pkt, sizeof(pkt));
@@ -110,14 +154,12 @@ void cpu_slave(void)
 			remote = pkt.timestamp;
 			local = clock_timestamp(&local_clock);
 			diff = (int64_t)(remote - local);
+			(void)diff;
 
-			tracef(T_INF, "clk=%s offs=%9.6f", 
-				   tsfmt(s[0], local), LFP2D(diff));
-			//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
+			tracef(T_INF, "clk=%s offs=%s", FMT_CLK(local), FMT_CLK(diff));
 
-			(void)s; (void)diff;
 			DBG1("remote=%s local=%s diff=%s", 
-				tsfmt(s[0], remote), tsfmt(s[1], local), tsfmt(s[2], diff));
+				 FMT_CLK(remote), FMT_CLK(local), FMT_CLK(diff));
 
 			synclk_receive(remote, local);
 		}
@@ -137,8 +179,6 @@ void dummy_network_node(void)
 		chime_cpu_wait();
 	}
 }
-
-#define NETWORK_NODES 52
 
 int main(int argc, char *argv[]) 
 {
@@ -162,7 +202,7 @@ int main(int argc, char *argv[])
 		return 3;
 	}
 
-	for (i = 0; i < NETWORK_NODES; ++i) { 
+	for (i = 0; i < SIM_DUMMY_NETWORK_NODES; ++i) { 
 		if (chime_cpu_create(100, 0, dummy_network_node) < 0) {
 			ERR("chime_cpu_create() failed!");	
 			chime_client_stop();
@@ -170,7 +210,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	chime_reset_all();
+//	chime_reset_all();
 
 	chime_except_catch(NULL);
 

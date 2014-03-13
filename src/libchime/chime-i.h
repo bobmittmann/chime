@@ -121,7 +121,9 @@ enum {
 	CHIME_REQ_VAR_CREATE,
 	CHIME_REQ_VAR_REC,
 	CHIME_REQ_VAR_DUMP,
-	CHIME_REQ_CPU_RESET
+	CHIME_REQ_CPU_RESET,
+
+	CHIME_REQ_CPU_HALT
 };
 
 static const char __req_opc_nm[][16] = {
@@ -168,7 +170,9 @@ static const char __req_opc_nm[][16] = {
 	"VAR CREATE",
 	"REC",
 	"DUMP",
-	"CPU RESET"
+	"CPU RESET",
+
+	"CPU HALT"
 };
 
 /* Request header */
