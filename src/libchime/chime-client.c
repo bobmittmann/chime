@@ -398,6 +398,8 @@ bool chime_except_catch(struct chime_except * e)
 static void __cpu_stop(struct chime_node * node)
 {
 	struct chime_req_hdr req;
+	int node_id = node->id;
+
 	/* FIXME this will not work on win32 */
 	__thread_t self = __thread_self();
 
@@ -407,31 +409,39 @@ static void __cpu_stop(struct chime_node * node)
 #else
 		if (node->c.thread != self) {
 #endif
-			DBG1("<%d> thread cancel...", node->id);
+			DBG1("<%d> thread cancel...", node_id);
 			__thread_cancel(node->c.thread);
-			DBG1("<%d> thread join ...", node->id);
+			DBG1("<%d> thread join ...", node_id);
 			__thread_join(node->c.thread, NULL);
 		}
 
-		req.node_id = node->id;
+		req.node_id = node_id;
 		req.opc = CHIME_REQ_BYE;
 		req.oid = obj_oid(node);
 
-		DBG1("<%d> oid=%d says good-bye...", node->id, req.oid);
+		DBG1("<%d> oid=%d says good-bye...", node_id, req.oid);
 
 		if (__mq_send(client.mqsrv, &req, CHIME_REQ_HDR_LEN) < 0) {
 			ERR("__mq_send() failed: %s.", __strerr());
 		}
 	}
 
+	DBG("<%d> __mq_close()", node_id);
+
 	/* close CPU's message queue */
 	__mq_close(node->c.rcv_mq);
+
+	DBG("<%d> __mq_unlink()", node_id);
 
 	/* remove message queue name */
 	__mq_unlink(node->name);
 
+	DBG("<%d> obj_decref()", node_id);
+
 	/* decrement object reference count */
 	obj_decref(node);
+
+	DBG("<%d> done!", node_id);
 }
 
 int chime_client_stop(void)

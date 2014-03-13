@@ -27,7 +27,7 @@ CFILES = console.c chronos.c
 
 LIBDIRS = ../libchime
 
-LIBS = chime 
+LIBS = chime m
 
 ifeq ($(HOST),Cygwin)
 LIBS += pthread 

@@ -412,7 +412,9 @@ int __cpu_sim_loop(struct chime_node * node)
 
 	DBG1("CPU:%s control init.", cpu.node->name);
 	
-	if ((code = setjmp(cpu.except_env)) > 0) {
+	code = setjmp(cpu.except_env);
+	
+	if (code > EXCEPT_CPU_HALT) {
 		ERR("exception: %d.", code);
 	} else {
 		if (setjmp(cpu.reset_env)) {
@@ -443,7 +445,7 @@ int __cpu_sim_loop(struct chime_node * node)
 
 	__sem_post(node->c.except_sem);
 
-	DBG2("CPU:%s control end.", cpu.node->name);
+	DBG("CPU:%s control end.", cpu.node->name);
 
 	return 0;
 }
@@ -490,13 +492,18 @@ void chime_cpu_halt(void)
 	struct chime_req_step req;
 
 	req.hdr.node_id = cpu.node_id;
-	req.hdr.opc = CHIME_REQ_CPU_HALT;
+	req.hdr.opc = CHIME_REQ_HALT;
 	req.hdr.oid = 0;
 
 	if (__mq_send(cpu.xmt_mq, &req, CHIME_REQ_STEP_LEN) < 0) {
 		ERR("__mq_send() failed: %s.", __strerr());
 		__cpu_except(EXCEPT_MQ_SEND);
 	} 
+
+//	__cpu_except(EXCEPT_CPU_HALT);
+	for (;;) {
+		__cpu_event_wait();
+	}
 }
 
 void chime_cpu_self_destroy(void) 

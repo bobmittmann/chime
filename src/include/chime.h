@@ -57,7 +57,8 @@ struct comm_attr {
  *****************************************************************************/
 
 enum {
-	EXCEPT_COMM_LOOKUP_FAIL = 1,
+	EXCEPT_CPU_HALT = 1,
+	EXCEPT_COMM_LOOKUP_FAIL,
 	EXCEPT_SELF_DESTROYED,
 	EXCEPT_MQ_SEND,
 	EXCEPT_MQ_RECV,

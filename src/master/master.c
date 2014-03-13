@@ -196,7 +196,7 @@ void rtc_clock_init(void)
 /****************************************************************************
  * Main CPU simulation
  ****************************************************************************/
-static __thread int sim_minutes = SIM_TIME_HOURS * 60;
+static __thread int sim_minutes;
 static __thread float sim_temperature;
 static __thread float sim_temp_rate;
 
@@ -238,10 +238,12 @@ void cpu_master(void)
 	(void)cnt;
 	(void)pkt;
 
+	sim_minutes = SIM_TIME_HOURS * 60;
 	sim_temperature = SIM_TEMP_MIN;
-	chime_cpu_temp_set(sim_temperature);
 	sim_temp_rate = (2.0 * SIM_TEMP_MAX - SIM_TEMP_MIN) / sim_minutes;
 	tracef(T_DBG, "Master temperature rate = %.3f dg/minute.", sim_temp_rate);
+	DBG("Master temperature rate = %.3f dg/minute.", sim_temp_rate);
+	chime_cpu_temp_set(sim_temperature);
 
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", NULL, NULL, NULL);

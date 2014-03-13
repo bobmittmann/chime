@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/time.h>
+#include <math.h>
 
 #define __CHIME_I__
 #include "chime-i.h"
@@ -508,9 +509,11 @@ static bool __chime_node_reset(int node_id, uint32_t sid)
 		return false;
 	}
 
-	node->bkpt = false;
+
+//	node->bkpt = false;
 	/* update the simulation running count */
-	server.sim.checkout_cnt++;
+//	server.sim.checkout_cnt++;
+//	DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 
 	return true;
 }
@@ -841,6 +844,7 @@ void __chime_sig_pause_sim(struct chime_request * req)
 		/* artificially increase the number of running CPUs 
 		   to prevent simulation stepping */
 		server.sim.checkout_cnt++;
+		DBG2("checkout_cnt=%d ...", server.sim.checkout_cnt);
 
 		/* set the paused flag */
 		server.sim.paused = true;
@@ -872,12 +876,17 @@ void __chime_sig_sim_tick(struct chime_request * req)
 		WARN("server.sim.checkout_cnt=%d", server.sim.checkout_cnt);
 }
 
+
+/*****************************************************************************
+ * (RPC) Remote requests
+ *****************************************************************************/
+
 void __chime_req_bkpt(struct chime_request * req)
 {
 	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
+	struct chime_node * node;
 
-	if (node == NULL) {
+    if ((node = server.node[node_id]) == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
 //   		assert(node != NULL);
 		return;
@@ -907,14 +916,13 @@ void __chime_req_bkpt(struct chime_request * req)
 void __chime_req_timer(struct chime_request * req)
 {
 	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
+	struct chime_node * node;
 	uint32_t cycles = req->timer.ticks;
 	struct chime_event evt;
 	uint64_t clk;
 
-	if (node == NULL) {
+    if ((node = server.node[node_id]) == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
-//  		assert(node != NULL);
 		return;
 	}
 
@@ -951,71 +959,6 @@ void __chime_req_timer(struct chime_request * req)
 	/* insert into the clock simulation heap */
 	assert((int64_t)(clk - server.heap->clk) >= 0);
 	heap_insert_min(server.heap, clk, &evt);
-}
-
-void __chime_req_step(struct chime_request * req)
-{
-	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
-	uint32_t cycles = req->step.cycles;
-	struct chime_event evt;
-	uint64_t clk;
-
-	if (node == NULL) {
-		WARN("<%d> invalid node!!!", node_id);
-   		assert(node != NULL);
-		return;
-	}
-
-	if (node->sid != server.sim.sid) {
-		WARN("<%d> wrong SID.", node_id);
-		return;
-	}
-
-	if (cycles == 0) {
-		DBG("<%d> cycles == 0 !!!", node_id);
-//		assert(cycles > 0);
-		return;
-	}
-
-	/* next time event */
-	clk = node->clk + (node->dt * cycles);
-
-	DBG1("<%d> node->clk=%"PRIu64".", node_id, node->clk);
-
-	assert(node->bkpt == false);
-	node->bkpt = true; /* set breakpoint flag */
-
-	evt.node_id = node_id;
-	evt.opc = CHIME_EVT_STEP;
-	evt.oid = 0;
-	evt.ticks = node->ticks + cycles;
-
-#if DEBUG
-	/* insert into the clock simulation heap */
-	if ((int64_t)(clk - server.heap->clk) < 0) {
-		WARN("<%d> clk=%"PRIu64" diff=%"PRId64, node_id, clk, 
-			 (int64_t)(clk - server.heap->clk));
-		WARN("<%d> cycles=%d", node_id, cycles);
-		WARN("<%d> node->clk=%"PRIu64" diff=%"PRId64, node_id, node->clk, 
-			 (int64_t)(node->clk - server.heap->clk));
-		heap_dump(stderr, server.heap);
-	}
-#endif
-
-	assert((int64_t)(clk - server.heap->clk) >= 0);
-	heap_insert_min(server.heap, clk, &evt);
-
-	/* decrement the node run count */
-	server.sim.checkout_cnt--;
-	if (server.sim.checkout_cnt == 0) {
-		DBG2("<%d> cycles=%d clk=%"PRIu64" SYN.", node_id, cycles, clk);
-		/* all CPUs checked in, step the simulator */
-		__chime_sim_step();
-	} else {
-		DBG5("<%d> cycles=%d clk=%"PRIu64".", node_id, cycles, clk);
-		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
-	}
 }
 
 void __chime_req_comm_xmt(struct chime_request * req)
@@ -1214,68 +1157,16 @@ void __chime_req_comm_xmt(struct chime_request * req)
 //		heap_dump(stderr, server.heap);
 }
 
-void __chime_req_cpu_halt(struct chime_request * req)
+void __chime_req_step(struct chime_request * req)
 {
 	int node_id = req->node_id;
+	uint32_t cycles = req->step.cycles;
 	struct chime_node * node;
-//	bool bkpt;
+	struct chime_event evt;
+	uint64_t clk;
 
-	/* sanity check */
     if ((node = server.node[node_id]) == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
-		return;
-	}
-
-	assert(node->bkpt == false);
-
-//	bkpt = node->bkpt;
-	INF("<%d> CPU halted!", node_id);
-
-	__chime_node_clear_events(node_id);
-
-	__chime_node_clear_comms(node_id);
-
-//	heap_dump(stderr, server.heap);
-	__chime_node_clear_events(node_id);
-
-	__chime_node_clear_comms(node_id);
-}
-
-void __chime_req_bye(struct chime_request * req)
-{
-	int node_id = req->node_id;
-	struct chime_node * node;
-
-	/* sanity check */
-    if ((node = server.node[node_id]) == NULL) {
-		WARN("<%d> invalid node!!!", node_id);
-		return;
-	}
-
-	INF("<%d> oid=%d, bye-bye!", node_id, req->oid);
-
-	if (!__chime_node_remove(node_id)) {
-		/* decrement the node run count */
-		if (--server.sim.checkout_cnt == 0) {
-
-			/* all CPUs checked in, step the simulator */
-			__chime_sim_step();
-		} else { 
-			DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
-		}
-	}
-
-}
-
-void __chime_req_abort(struct chime_request * req)
-{
-	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
-
-	/* sanity check */
-    if (node == NULL) {
-		WARN("<%d> invalid node!!!", node_id);
-		assert(node != NULL);
 		return;
 	}
 
@@ -1284,25 +1175,52 @@ void __chime_req_abort(struct chime_request * req)
 		return;
 	}
 
-	assert(node->bkpt == false);
+	if (cycles == 0) {
+		DBG("<%d> cycles == 0 !!!", node_id);
+//		assert(cycles > 0);
+		return;
+	}
 
-	WARN("RIP. <%d> OID=%d, died with code %d.", 
-		node_id, req->oid, req->abort.code);
-	__chime_node_remove(node_id);
+	/* next time event */
+	clk = node->clk + (node->dt * cycles);
+
+	DBG1("<%d> node->clk=%"PRIu64".", node_id, node->clk);
+
+	assert(node->bkpt == false);
+	node->bkpt = true; /* set breakpoint flag */
+
+	evt.node_id = node_id;
+	evt.opc = CHIME_EVT_STEP;
+	evt.oid = 0;
+	evt.ticks = node->ticks + cycles;
+
+#if DEBUG
+	/* insert into the clock simulation heap */
+	if ((int64_t)(clk - server.heap->clk) < 0) {
+		WARN("<%d> clk=%"PRIu64" diff=%"PRId64, node_id, clk, 
+			 (int64_t)(clk - server.heap->clk));
+		WARN("<%d> cycles=%d", node_id, cycles);
+		WARN("<%d> node->clk=%"PRIu64" diff=%"PRId64, node_id, node->clk, 
+			 (int64_t)(node->clk - server.heap->clk));
+		heap_dump(stderr, server.heap);
+	}
+#endif
+
+	assert((int64_t)(clk - server.heap->clk) >= 0);
+	heap_insert_min(server.heap, clk, &evt);
 
 	/* decrement the node run count */
-	if (--server.sim.checkout_cnt == 0) {
+	server.sim.checkout_cnt--;
+	if (server.sim.checkout_cnt == 0) {
+		DBG2("<%d> cycles=%d clk=%"PRIu64" SYN.", node_id, cycles, clk);
 		/* all CPUs checked in, step the simulator */
 		__chime_sim_step();
-	} else { 
+	} else {
+		DBG5("<%d> cycles=%d clk=%"PRIu64".", node_id, cycles, clk);
 		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 	}
 }
 
-
-/*****************************************************************************
- * (RPC) Remote requests
- *****************************************************************************/
 
 void __chime_node_join(struct chime_request * req)
 {
@@ -1353,6 +1271,7 @@ void __chime_node_join(struct chime_request * req)
 		node->dt = node->dres * offs_t;
 		node->period = (double)node->dt / (double)SEC;
 		node->time = 0;
+		node->bkpt = false;
 
 #if DEBUG
 		{
@@ -1387,11 +1306,169 @@ void __chime_node_join(struct chime_request * req)
 		server.node[node_id] = node;
 		/* insert ID in the index list */
 		u8_list_insert(server.node_idx, node_id);
-		server.sim.checkout_cnt++;
-		INF("checkout_cnt=%d.", server.sim.checkout_cnt);
+//		server.sim.checkout_cnt++;
+//		INF("checkout_cnt=%d.", server.sim.checkout_cnt);
 	}
 
 }
+
+void __chime_req_bye(struct chime_request * req)
+{
+	int node_id = req->node_id;
+	struct chime_node * node;
+
+	/* sanity check */
+    if ((node = server.node[node_id]) == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		return;
+	}
+
+	INF("<%d> oid=%d, bye-bye!", node_id, req->oid);
+
+	if (!__chime_node_remove(node_id)) {
+		/* decrement the node run count */
+		if (--server.sim.checkout_cnt == 0) {
+
+			/* all CPUs checked in, step the simulator */
+			__chime_sim_step();
+		} else { 
+			DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
+		}
+	}
+
+}
+
+void __chime_req_init(struct chime_request * req)
+{
+	int node_id = req->node_id;
+	struct chime_node * node;
+
+	/* sanity check */
+    if ((node = server.node[node_id]) == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		assert(node != NULL);
+		return;
+	}
+
+
+	DBG("<%d> node=%p session %d.", node_id, node, req->init.sid);
+
+	if (req->init.sid != server.sim.sid) {
+		WARN("invalid session ID %d.", req->init.sid);
+		return;
+	}
+
+	/* clear the breakpoint flag */
+	node->bkpt = false;
+
+	/* increment the checkout counter */
+	server.sim.checkout_cnt++;
+	DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
+
+	/* set the session ID */
+	node->sid = server.sim.sid;
+}
+
+void __chime_req_halt(struct chime_request * req)
+{
+	int node_id = req->node_id;
+	struct chime_node * node;
+
+	/* sanity check */
+    if ((node = server.node[node_id]) == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		return;
+	}
+
+	if (node->sid != server.sim.sid) {
+		WARN("<%d> wrong SID.", node_id);
+		return;
+	}
+
+	assert(node->bkpt == false);
+
+	INF("<%d> CPU halted!", node_id);
+
+	__chime_node_clear_events(node_id);
+
+	__chime_node_clear_comms(node_id);
+
+//	heap_dump(stderr, server.heap);
+
+	/* REset the session ID */
+	node->sid = 0;
+
+	/* decrement the node run count */
+	if (--server.sim.checkout_cnt == 0) {
+
+		/* all CPUs checked in, step the simulator */
+		__chime_sim_step();
+	} else { 
+		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
+	}
+
+}
+
+void __chime_req_abort(struct chime_request * req)
+{
+	int node_id = req->node_id;
+	struct chime_node * node;
+
+	/* sanity check */
+    if ((node = server.node[node_id]) == NULL) {
+		WARN("<%d> invalid node!!!", node_id);
+		return;
+	}
+
+	if (node->sid != server.sim.sid) {
+		WARN("<%d> wrong SID.", node_id);
+		return;
+	}
+
+	assert(node->bkpt == false);
+
+	WARN("RIP. <%d> OID=%d, died with code %d.", 
+		node_id, req->oid, req->abort.code);
+	__chime_node_remove(node_id);
+
+	/* decrement the node run count */
+	if (--server.sim.checkout_cnt == 0) {
+		/* all CPUs checked in, step the simulator */
+		__chime_sim_step();
+	} else { 
+		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
+	}
+}
+
+void __chime_req_reset_cpu(struct chime_request * req)
+{
+	struct chime_node * node;
+
+	node = obj_getinstance(req->oid);
+	assert(node != NULL);
+
+	DBG1("OID=%d.", req->oid);
+
+	if (node->id == 0) {
+		ERR("Invalid node ID.");
+		return;
+	}
+
+	server.sim.checkout_cnt--;
+
+	if (!__chime_node_reset(node->id, server.sim.sid)) {
+		WARN("<%d> reset failed!.", node->id);
+		__chime_node_remove(node->id);
+	}
+
+	/* reset simulation timer */
+	__sim_timer_reset();
+
+	if (server.sim.checkout_cnt == 0) {
+		__chime_sim_step();
+	}
+}
+
 
 #define EVENT_PER_NODE_MAX 2048
 
@@ -1411,9 +1488,21 @@ void __chime_req_temp_set(struct chime_request * req)
 	node = server.node[node_id];
     if (node == NULL) {
 		WARN("<%d> invalid node!!!", node_id);
-		assert(node != NULL);
 		return;
 	}
+
+	if (!isnormal(t)) {
+		ERR("<%d> invalid floating point value!!!", node_id);
+		return;
+	}
+
+	DBG1("<%d> node=%p temperatue=%f", node_id, node, t);
+
+	if ((t > 200) || (t < -100)) {
+		ERR("<%d> invalid temperature: %f!!!", node_id, t);
+		return;
+	}
+
 
 	old_dt = node->dt;
 	(void)old_dt;
@@ -1423,6 +1512,15 @@ void __chime_req_temp_set(struct chime_request * req)
 	node->temperature = t;
 	node->dt = node->dres * xtal_temp_offs(node->tc, node->temperature);
 	node->period = (double)node->dt / (double)SEC;
+
+#if DEBUG
+	{
+		double freq_hz;
+		freq_hz = node->dt / 1000.0;
+		DBG1("<%d> temp=%.1f dt=%"PRIu64"(fs/us) freq=%0.3fHz", 
+			 node_id, t, node->dt, freq_hz);
+	}
+#endif
 
 	/* update clock on pending events !!! */
 	i = 1;
@@ -1455,22 +1553,19 @@ void __chime_req_temp_set(struct chime_request * req)
 		heap_insert_min(server.heap, clk[i], &evt[i]);
 	}
 
-	DBG3("<%d> %d events updated", node_id, n);
+	DBG2("<%d> %d events updated", node_id, n);
 
-#if DEBUG
-	{
-		double freq_hz;
-		freq_hz = node->dt / 1000.0;
-		DBG1("temp=%.1f dt=%" PRIu64 "(fs/us) freq=%0.3fHz",
-			 t, node->dt, freq_hz);
-	}
-#endif
 }
 
 void __chime_req_sim_speed_set(struct chime_request * req)
 {
 	float m = req->speed.val;
 	struct ratio r;
+
+	if (!isnormal(m)) {
+		ERR("Invalid floating point value!!!");
+		return;
+	}
 
 	if (m < 0.000099) {
 		WARN("Speed=%f times. Too slow!", m);
@@ -1525,35 +1620,6 @@ void __chime_req_comm_destroy(struct chime_request * req)
 
 	/* release statistics distribution bins */
 	free(comm->stat);
-}
-
-void __chime_req_init(struct chime_request * req)
-{
-	int node_id = req->node_id;
-	struct chime_node * node = server.node[node_id];
-
-	/* sanity check */
-    if (node == NULL) {
-		WARN("<%d> invalid node!!!", node_id);
-		assert(node != NULL);
-		return;
-	}
-
-
-	DBG("<%d> session %d.", node_id, req->init.sid);
-
-	if (req->init.sid != server.sim.sid) {
-		WARN("invalid session ID %d.", req->init.sid);
-		return;
-	}
-
-	/* clear the breakpoint flag */
-//	node->bkpt = false;
-	/* increment the checkout counter */
-//	server.sim.checkout_cnt++;
-
-	/* set the session ID */
-	node->sid = server.sim.sid;
 }
 
 void __chime_req_reset_all(struct chime_request * req)
@@ -1620,34 +1686,6 @@ void __chime_req_reset_all(struct chime_request * req)
 	DBG4("let the fun begin...");
 }
 
-void __chime_req_reset_cpu(struct chime_request * req)
-{
-	struct chime_node * node;
-
-	node = obj_getinstance(req->oid);
-	assert(node != NULL);
-
-	DBG1("OID=%d.", req->oid);
-
-	if (node->id == 0) {
-		ERR("Invalid node ID.");
-		return;
-	}
-
-	server.sim.checkout_cnt--;
-
-	if (!__chime_node_reset(node->id, server.sim.sid)) {
-		WARN("<%d> reset failed!.", node->id);
-		__chime_node_remove(node->id);
-	}
-
-	/* reset simulation timer */
-	__sim_timer_reset();
-
-	if (server.sim.checkout_cnt == 0) {
-		__chime_sim_step();
-	}
-}
 
 void __chime_req_comm_stat(struct chime_request * req)
 {
@@ -1782,8 +1820,8 @@ static int chime_ctrl_task(void * arg)
 			__chime_node_join(req);
 			break;
 
-		case CHIME_REQ_CPU_HALT:
-			__chime_req_cpu_halt(req);
+		case CHIME_REQ_HALT:
+			__chime_req_halt(req);
 			break;
 
 		case CHIME_REQ_BYE:
@@ -1802,7 +1840,7 @@ static int chime_ctrl_task(void * arg)
 			__chime_req_step(req);
 			break;
 
-		case CHIME_REQ_BKPT :
+		case CHIME_REQ_BKPT:
 			__chime_req_bkpt(req);
 			break;
 
