@@ -34,13 +34,17 @@
 struct clock {
 	volatile uint64_t timestamp; /* clock timestamp */
 	uint64_t offset; /* clock offset */
-	int32_t resolution; /* fractional clock resolution */
-	int32_t increment; /* fractional per tick increment */
+	uint32_t resolution; /* fractional clock resolution */
+	uint32_t increment; /* fractional per tick increment */
 	int32_t drift_comp;
 	uint32_t frequency;
 	bool pps_flag;
 	int hw_tmr;
 };
+
+/* 
+   Clock FLL synchronization 
+ */
 
 struct clock_fll {
 	struct clock  * clk;
@@ -56,11 +60,20 @@ struct clock_fll {
 	bool run;
 };
 
+/* 
+   Clock PLL synchronization 
+ */
+
 struct clock_pll {
 	struct clock  * clk;
+	int32_t drift;
 	int32_t err;
 	int32_t freq;
 	int32_t vco;
+	uint32_t offs; /* time offset (clock format) */
+	int64_t itvl; /* interval between the last to samples */
+	bool lock;
+	bool run;
 	struct {
 		int32_t x[4];
 		int32_t y[4];
@@ -71,9 +84,25 @@ struct clock_pll {
 	} f1;
 };
 
+
+/* 
+   Clock filter 
+ */
+
+struct clock_filt {
+	struct clock  * clk;
+	uint32_t precision;
+
+	struct {
+		uint32_t delay;
+		uint32_t precision;
+		uint64_t timestamp; /* last received timestamp */
+	} peer;
+};
+
 struct synclk_pkt {
 	uint32_t sequence;
-	uint32_t reserved;
+	uint32_t precision;
 	uint64_t timestamp;
 };
 
@@ -117,13 +146,16 @@ void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr);
  * Clock PLL (Phase Locked Loop) functions 
  ****************************************************************************/
 
-int32_t pll_phase_adjust(struct clock_pll * pll, int32_t offs, 
-						 int32_t interval);
-
 int32_t pll_freq_adjust(struct clock_pll * pll, 
 						int32_t freq_adj, int32_t offs);
 
 void pll_reset(struct clock_pll  * pll);
+
+void pll_init(struct clock_pll  * pll, struct clock  * clk);
+
+void pll_step(struct clock_pll  * pll);
+
+void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl);
 
 /****************************************************************************
  * Clock FLL (Frequency Locked Loop) functions 
@@ -136,15 +168,21 @@ void fll_reset(struct clock_fll  * fll, uint64_t ref_ts);
 void fll_init(struct clock_fll  * fll, struct clock  * clk, int64_t err_max);
 
 /****************************************************************************
- * Clock synchronization functions 
+ * Clock filter functions 
  ****************************************************************************/
 
-void synclk_init(struct clock * clk, float peer_delay, float peer_precision);
+/* Initialize the clock network filter */
+void filt_init(struct clock_filt * filt, struct clock  * clk);
 
-void synclk_receive(uint64_t local, uint64_t remote);
+/* Reset the clock network filter.
+   - peer_delay: average network delay (CLK format)
+   - peer_precision: precison of this clock (CLK format) */
+void filt_reset(struct clock_filt * filt, uint32_t peer_delay, 
+				uint32_t peer_precision);
 
-void synclk_pps(void);
-
+/* Called when a time packed is received from the network */
+int64_t filt_receive(struct clock_filt * filt, 
+					 uint64_t remote, uint64_t local);
 
 /****************************************************************************
  * Utility functions 

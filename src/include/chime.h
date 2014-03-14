@@ -185,6 +185,9 @@ int chime_comm_read(int chan, void * buf, size_t len);
 
 int chime_comm_close(int chan);
 
+/* return the number of nodes connected to the COMM channel */
+int chime_comm_nodes(int chan);
+
 /*****************************************************************************
  * Variables
  *****************************************************************************/

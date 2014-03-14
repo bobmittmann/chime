@@ -84,18 +84,13 @@ void local_clock_init(void)
 
 void local_clock_pps(void)
 {
-	uint64_t ts;
-
-	ts = clock_timestamp(&local_clock);
-	chime_var_rec(slave_clk_var, CLK_DOUBLE(ts) - chime_cpu_time());
 }
 
 /****************************************************************************
  * ARCnet
  ****************************************************************************/
 
-#define ARCNET_DELAY 0.15
-#define REMOTE_PRECISION 0.005
+#define REMOTE_PRECISION (FLOAT_CLK(0.005))
 
 static bool arcnet_pkt_rcvd;
 
@@ -109,9 +104,14 @@ void arcnet_rcv_isr(void)
  * Main CPU simulation
  ****************************************************************************/
 
+struct clock_filt filt;
+struct clock_pll pll;
+
 void cpu_slave(void)
 {
 	struct synclk_pkt pkt;
+	uint64_t remote_ts = 0;
+	int node_cnt = 0;
 	
 	tracef(T_DBG, "Slave reset...");
 	printf(" - Reset: ID=%02x\n", chime_cpu_id());
@@ -124,44 +124,64 @@ void cpu_slave(void)
 	slave_clk_var = chime_var_open("slave_clk");
 
 	/* initialize clock synchronization */
-	synclk_init(&local_clock, ARCNET_DELAY, REMOTE_PRECISION);
-
+	filt_init(&filt, &local_clock);
+	pll_init(&pll, &local_clock);
+	
 	/* initialize local clock */
 	local_clock_init();
 
+	/* XXX: simulation. Set the initial clock offset */
 	clock_step(&local_clock, FLOAT_CLK(-0.050));
 
 	arcnet_pkt_rcvd = false;
 	for (;;) {
+		int n;
+
 		chime_cpu_wait();
 
 		/* PPS .... */
 		if (pps_flag) { 
+			uint64_t ts;
+
 			pps_flag = false;
 
-			local_clock_pps();
+			ts = clock_time_get(&local_clock);
+			chime_var_rec(slave_clk_var, CLK_DOUBLE(ts) - chime_cpu_time());
+
+			pll_step(&pll);
+		}
+
+		n = chime_comm_nodes(ARCNET_COMM);
+		if (node_cnt != n) {
+			uint32_t arcnet_delay;
+
+			node_cnt = n;
+			arcnet_delay = FLOAT_CLK(0.000084 * n + 0.00087);
+			/* Reset filter. This function should be called whenever the
+			   network reconfigures itself */
+			filt_reset(&filt, arcnet_delay, REMOTE_PRECISION);
 		}
 
 		if (arcnet_pkt_rcvd) {
-			uint64_t local;
-			uint64_t remote;
-			int64_t diff;
+			uint64_t local_ts;
+			int64_t offs;
+			int64_t itvl;
 
 			/* read from ARCNET*/
 			chime_comm_read(ARCNET_COMM, &pkt, sizeof(pkt));
 			arcnet_pkt_rcvd = false;
 
-			remote = pkt.timestamp;
-			local = clock_timestamp(&local_clock);
-			diff = (int64_t)(remote - local);
-			(void)diff;
+			itvl = (int64_t)(pkt.timestamp - remote_ts); 
+			remote_ts = pkt.timestamp;
+			local_ts = clock_time_get(&local_clock);
 
-			tracef(T_INF, "clk=%s offs=%s", FMT_CLK(local), FMT_CLK(diff));
+			offs = filt_receive(&filt, remote_ts, local_ts);
+			tracef(T_INF, "clk=%s offs=%s", FMT_CLK(local_ts), FMT_CLK(offs));
 
-			DBG1("remote=%s local=%s diff=%s", 
-				 FMT_CLK(remote), FMT_CLK(local), FMT_CLK(diff));
+			DBG1("remote=%s local=%s offs=%s", 
+				 FMT_CLK(remote_ts), FMT_CLK(local_ts), FMT_CLK(offs));
 
-			synclk_receive(remote, local);
+			pll_phase_adjust(&pll, offs, itvl);
 		}
 	}
 }
@@ -210,7 +230,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-//	chime_reset_all();
+	chime_reset_all();
 
 	chime_except_catch(NULL);
 

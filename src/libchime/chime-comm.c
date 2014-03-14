@@ -209,3 +209,19 @@ int chime_comm_read(int chan, void * buf, size_t len)
 	return len;
 }
 
+int chime_comm_nodes(int chan)
+{
+	struct chime_comm * comm;
+	int comm_oid;
+
+	assert((unsigned int)chan < CHIME_CPU_COMM_MAX);  
+
+	comm_oid = cpu.comm[chan].oid;
+	assert(comm_oid != 0);
+
+	comm = obj_getinstance(comm_oid);
+	assert(comm != NULL);
+
+	return LIST_LEN(comm->node_lst);
+}
+

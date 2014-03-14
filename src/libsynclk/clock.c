@@ -184,8 +184,8 @@ void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr)
 
 	period_us = 1000000 / tick_freq_hz;
 	(void)period_us;
-	INF("period=%d.%03d ms, resolution=%u", 
-		period_us / 1000, period_us % 1000, clk->resolution);
+	INF("period=%d.%03d ms, resolution=%.6f", 
+		period_us / 1000, period_us % 1000, CLK_FLOAT(clk->resolution));
 }
 
 

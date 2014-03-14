@@ -52,9 +52,10 @@ int master_temp_var;
 #define ARCNET_COMM 0
 #define I2C_RTC_COMM 1
 
-#define SIM_POLL_JITTER_US 5000
+#define SIM_POLL_JITTER_US 5
 #define SIM_TEMP_MIN -20
-#define SIM_TEMP_MAX 70
+//#define SIM_TEMP_MAX 70
+#define SIM_TEMP_MAX 30
 
 #define SIM_TIME_HOURS 2
 
@@ -349,7 +350,7 @@ int main(int argc, char *argv[])
 		- offset +-25 ppm  
 		- temp drift: -0.025 ppm  
 	 */
-	if (chime_cpu_create(-200, -0.10, cpu_master) < 0) {
+	if (chime_cpu_create(-25, -0.025, cpu_master) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;
