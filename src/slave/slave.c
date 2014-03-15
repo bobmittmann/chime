@@ -49,14 +49,15 @@ int slave_temp_var;
 #define SIM_POLL_JITTER_US 5000
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
+
 #define SIM_TIME_HOURS 6
-#define SIM_DUMMY_NETWORK_NODES 0
+#define SIM_DUMMY_NETWORK_NODES 61
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-#define LOCAL_CLOCK_FREQ_HZ 9
+#define LOCAL_CLOCK_FREQ_HZ 16
 
 static struct clock local_clock;
 
@@ -104,8 +105,35 @@ void arcnet_rcv_isr(void)
  * Main CPU simulation
  ****************************************************************************/
 
+static __thread int sim_minutes;
+static __thread int sim_timeout;
+
 struct clock_filt filt;
 struct clock_pll pll;
+
+void sim_timer_isr(void)
+{
+	if (++sim_minutes == sim_timeout) {
+		tracef(T_DBG, "Halting the simulation.");
+		chime_sim_vars_dump();
+//		chime_cpu_halt();
+		chime_cpu_self_destroy();
+	}
+
+	switch (sim_minutes) {
+	case 1:
+//		clock_step(&local_clock, FLOAT_CLK(0.8));
+		break;
+	case 16:
+//		clock_step(&local_clock, FLOAT_CLK(-0.05));
+//		pll_phase_adjust(&pll, FLOAT_CLK(-0.05), FLOAT_CLK(0.16));
+		break;
+	case 32:
+//		clock_step(&local_clock, FLOAT_CLK(-0.05));
+		break;
+	}
+
+}
 
 void cpu_slave(void)
 {
@@ -116,6 +144,10 @@ void cpu_slave(void)
 	tracef(T_DBG, "Slave reset...");
 	printf(" - Reset: ID=%02x\n", chime_cpu_id());
 	fflush(stdout);
+	sim_timeout = SIM_TIME_HOURS * 60;
+	sim_minutes = 0;
+	/* set an 1 minute interval timer for simulation  */
+	chime_tmr_init(3, sim_timer_isr, 60000000, 60000000);
 
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", arcnet_rcv_isr, NULL, NULL);
@@ -131,7 +163,7 @@ void cpu_slave(void)
 	local_clock_init();
 
 	/* XXX: simulation. Set the initial clock offset */
-	clock_step(&local_clock, FLOAT_CLK(-0.050));
+	clock_step(&local_clock, FLOAT_CLK(1.00));
 
 	arcnet_pkt_rcvd = false;
 	for (;;) {
@@ -157,6 +189,8 @@ void cpu_slave(void)
 
 			node_cnt = n;
 			arcnet_delay = FLOAT_CLK(0.000084 * n + 0.00087);
+			tracef(T_DBG, "ARCnet: nodes=%d delay=%s.", 
+				   node_cnt, FMT_CLK(arcnet_delay));
 			/* Reset filter. This function should be called whenever the
 			   network reconfigures itself */
 			filt_reset(&filt, arcnet_delay, REMOTE_PRECISION);
@@ -167,6 +201,8 @@ void cpu_slave(void)
 			int64_t offs;
 			int64_t itvl;
 
+			(void)itvl;
+
 			/* read from ARCNET*/
 			chime_comm_read(ARCNET_COMM, &pkt, sizeof(pkt));
 			arcnet_pkt_rcvd = false;
@@ -176,7 +212,8 @@ void cpu_slave(void)
 			local_ts = clock_time_get(&local_clock);
 
 			offs = filt_receive(&filt, remote_ts, local_ts);
-			tracef(T_INF, "clk=%s offs=%s", FMT_CLK(local_ts), FMT_CLK(offs));
+
+			tracef(T_DBG, "clk=%s offs=%s", FMT_CLK(local_ts), FMT_CLK(offs));
 
 			DBG1("remote=%s local=%s offs=%s", 
 				 FMT_CLK(remote_ts), FMT_CLK(local_ts), FMT_CLK(offs));
@@ -216,7 +253,7 @@ int main(int argc, char *argv[])
 	/* intialize application */
 	chime_app_init((void (*)(void))chime_client_stop);
 
-	if (chime_cpu_create(-50, -0.5, cpu_slave) < 0) {
+	if (chime_cpu_create(+100, -0.05, cpu_slave) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;

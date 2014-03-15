@@ -41,8 +41,8 @@ void filt_init(struct clock_filt * filt, struct clock  * clk)
 /* Reset the clock network filter.
    - peer_delay: average network delay (CLK format)
    - peer_precision: precison of this clock (CLK format) */
-void filt_reset(struct clock_filt * filt, uint32_t peer_delay, 
-				uint32_t peer_precision)
+void filt_reset(struct clock_filt * filt, int32_t peer_delay, 
+				int32_t peer_precision)
 {
 	filt->peer.delay  = peer_delay;
 	filt->peer.precision = peer_precision;
@@ -55,7 +55,7 @@ void filt_reset(struct clock_filt * filt, uint32_t peer_delay,
 int64_t filt_receive(struct clock_filt * filt, 
 					 uint64_t remote, uint64_t local)
 {
-	uint32_t delay;
+	int32_t delay;
 	int64_t offs;
 	int64_t disp;
 
@@ -63,13 +63,13 @@ int64_t filt_receive(struct clock_filt * filt,
 
 	offs = (int64_t)(remote - local);
 	delay = filt->peer.delay;
-	offs -= delay;
+	offs += delay;
 	disp = filt->precision + filt->peer.precision + CLOCK_PHI * delay;
 	(void)disp;
 
 	/* FIXME: implement filtering */
-	DBG1("remote=%s local=%s offs=%s", 
-		 FMT_CLK(remote), FMT_CLK(local), FMT_CLK(offs));
+	DBG1("remote=%s local=%s offs=%s delay=%s", 
+		FMT_CLK(remote), FMT_CLK(local), FMT_CLK(offs), FMT_CLK(delay));
 
 	return offs;
 }
