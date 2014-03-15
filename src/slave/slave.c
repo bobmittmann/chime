@@ -104,6 +104,19 @@ void arcnet_rcv_isr(void)
  * Main CPU simulation
  ****************************************************************************/
 
+static __thread int sim_minutes;
+
+void sim_timer_isr(void)
+{
+	if (--sim_minutes == 0) {
+		tracef(T_DBG, "Halting the simulation.");
+//		chime_sim_vars_dump();
+//		chime_cpu_halt();
+		chime_cpu_self_destroy();
+	}
+}
+
+
 struct clock_filt filt;
 struct clock_pll pll;
 
@@ -116,6 +129,9 @@ void cpu_slave(void)
 	tracef(T_DBG, "Slave reset...");
 	printf(" - Reset: ID=%02x\n", chime_cpu_id());
 	fflush(stdout);
+	/* set an 1 minute interval timer for simulation  */
+	sim_minutes = 60;
+	chime_tmr_init(5, sim_timer_isr, 60000000, 60000000);
 
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", arcnet_rcv_isr, NULL, NULL);
@@ -216,14 +232,14 @@ int main(int argc, char *argv[])
 	/* intialize application */
 	chime_app_init((void (*)(void))chime_client_stop);
 
-	if (chime_cpu_create(-50, -0.5, cpu_slave) < 0) {
+	if (chime_cpu_create(100, -0.05, cpu_slave) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;
 	}
 
 	for (i = 0; i < SIM_DUMMY_NETWORK_NODES; ++i) { 
-		if (chime_cpu_create(100, 0, dummy_network_node) < 0) {
+		if (chime_cpu_create(-100, 0, dummy_network_node) < 0) {
 			ERR("chime_cpu_create() failed!");	
 			chime_client_stop();
 			return 4;

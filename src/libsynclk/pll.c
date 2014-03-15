@@ -175,7 +175,7 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 #define PLL_INTERVAL SYNCLK_POLL
 
 #define PLL_DRIFT_MAX FLOAT_Q31(0.001000)
-#define PLL_OFFS_MAX FLOAT_CLK(0.01000)
+#define PLL_OFFS_MAX FLOAT_CLK(0.1000)
 
 int32_t __pll_step(struct clock_pll * pll, int32_t freq, int32_t offs)
 {
@@ -198,7 +198,7 @@ int32_t __pll_step(struct clock_pll * pll, int32_t freq, int32_t offs)
 
 	DBG("e=%.8f de=%.8f", Q31_FLOAT(e), Q31_FLOAT(de));
 
-	pll->freq = freq_adj;
+	pll->clk_drift = freq_adj;
 
 	return freq_adj;
 }
@@ -206,7 +206,7 @@ int32_t __pll_step(struct clock_pll * pll, int32_t freq, int32_t offs)
 int32_t __pll_phase_adjust(struct clock_pll * pll, 
 						   int32_t offs, int32_t interval)
 {
-	return __pll_step(pll, pll->freq, offs);
+	return __pll_step(pll, pll->clk_drift, offs);
 }
 
 int32_t pll_freq_adjust(struct clock_pll * pll, int32_t freq_adj, int32_t offs)
@@ -217,12 +217,13 @@ int32_t pll_freq_adjust(struct clock_pll * pll, int32_t freq_adj, int32_t offs)
 void pll_step(struct clock_pll  * pll)
 {
 	int32_t freq_adj;
+	int32_t drift;
 	int32_t de;
 	int32_t e;
 
 	if (pll->offs > PLL_OFFS_MAX)
 		e = CLK_Q31(PLL_OFFS_MAX);
-	else if (pll->offs > -PLL_OFFS_MAX)
+	else if (pll->offs < -PLL_OFFS_MAX)
 		e = CLK_Q31(-PLL_OFFS_MAX);
 	else
 		e = CLK_Q31(pll->offs);
@@ -234,13 +235,27 @@ void pll_step(struct clock_pll  * pll)
 //	chime_var_rec(err_var, Q31F(e));
 //	chime_var_rec(de_var, Q31F(de));
 
-	DBG1("e=%.8f de=%.8f", Q31_FLOAT(e), Q31_FLOAT(de));
+	DBG("offs=%s e=%.8f de=%.8f", 
+		FMT_CLK(pll->offs), Q31_FLOAT(e), Q31_FLOAT(de));
 
-	freq_adj = pll->freq + (Q31_MUL(e, FLOAT_Q31(PLL_PROP)) / PLL_INTERVAL) + 
-		Q31_MUL(de, FLOAT_Q31(PLL_DERIV * PLL_PROP));
+//	freq_adj = (Q31_MUL(e, FLOAT_Q31(PLL_PROP)) / PLL_INTERVAL) + 
+//		Q31_MUL(de, FLOAT_Q31(PLL_DERIV * PLL_PROP));
 
+//	drift += freq_adj;
 
-	pll->freq = freq_adj;
+//	d_drift = FLOAT_Q31(Q31_FLOAT(fll->drift_err - e_drift) / dx);
+
+	freq_adj = e / 128 + de / 256;
+	drift = pll->clk_drift + freq_adj;
+		// drift = (2 * fll->drift + e_drift + 32 * d_drift) / 2;
+	/* adjust the clock */
+	pll->clk_drift = clock_drift_comp(pll->clk, drift, pll->clk_err);
+
+	/* amortize the estimated error */
+//	pll->offs -= freq_adj / 2;
+
+	e = pll->offs / 2;
+	pll->offs -= e;
 
 	return;
 }
@@ -258,7 +273,12 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 	}
 
 	pll->itvl = itvl;
-	pll->offs = pll->offs;
+	/* Set the offset reference */
+	pll->offs = offs;
+	/* Average the estimated error */
+	pll->clk_err = (pll->clk_err + offs) / 2;
+	/* Average the estimated error */
+	pll->err = (pll->err + offs) / 2;
 }
 
 void pll_reset(struct clock_pll  * pll)
@@ -267,7 +287,8 @@ void pll_reset(struct clock_pll  * pll)
 
 	pll->run = false;
 	pll->lock = false;
-	pll->drift = 0;
+	pll->clk_drift = 0;
+	pll->clk_err = 0;
 	pll->err = 0;
 
 	/* IIR order filer */
@@ -288,7 +309,8 @@ void pll_init(struct clock_pll  * pll, struct clock  * clk)
 	pll->clk = clk;
 	pll->run = false;
 	pll->lock = false;
-	pll->drift = 0;
+	pll->clk_drift = 0;
+	pll->clk_err = 0;
 	pll->err = 0;
 }
 

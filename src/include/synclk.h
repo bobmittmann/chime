@@ -36,8 +36,9 @@ struct clock {
 	uint64_t offset; /* clock offset */
 	uint32_t resolution; /* fractional clock resolution */
 	uint32_t increment; /* fractional per tick increment */
-	int32_t drift_comp;
 	uint32_t frequency;
+	int32_t drift_comp;
+	int32_t jitter;
 	bool pps_flag;
 	int hw_tmr;
 };
@@ -48,14 +49,15 @@ struct clock {
 
 struct clock_fll {
 	struct clock  * clk;
-	int32_t drift;
+	int32_t clk_err;
+	int32_t clk_drift;
+	int32_t drift_err;
 	uint64_t ref_ts;
 	uint64_t clk_ts;
-	int64_t err;
-	int64_t err_max;
+	int32_t err_max;
 	int32_t edge_offs;
 	uint32_t edge_filt;
-	uint32_t edge_win;
+	uint32_t edge_jit;
 	bool lock;
 	bool run;
 };
@@ -66,11 +68,11 @@ struct clock_fll {
 
 struct clock_pll {
 	struct clock  * clk;
-	int32_t drift;
+	int32_t clk_err;
+	int32_t clk_drift;
 	int32_t err;
-	int32_t freq;
 	int32_t vco;
-	uint32_t offs; /* time offset (clock format) */
+	int64_t offs; /* time offset (clock format) */
 	int64_t itvl; /* interval between the last to samples */
 	bool lock;
 	bool run;
@@ -136,7 +138,7 @@ void clock_time_set(struct clock * clk, uint64_t ts);
 void clock_step(struct clock * clk, int64_t dt);
 
 /* Adjust the clock frequency */ 
-int32_t clock_drift_comp(struct clock * clk, int32_t drift);
+int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err);
 
 /* Initialize the clock */ 
 void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr);

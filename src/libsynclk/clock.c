@@ -140,9 +140,9 @@ void clock_step(struct clock * clk, int64_t dt)
 }
 
 /* Adjust the clock frequency */ 
-int32_t clock_drift_comp(struct clock * clk, int32_t drift)
+int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 {
-	int32_t d;
+	int32_t clk_d;
 
 	/* limit the maximum drift correction */
 	if (drift > CLOCK_DRIFT_MAX)
@@ -150,17 +150,29 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift)
 	else if (drift < -CLOCK_DRIFT_MAX)
 		drift = -CLOCK_DRIFT_MAX;
 
+	/* average the estimated error */
+	clk->jitter = (clk->jitter + est_err) / 2;
+	clk_d = Q31_MUL(drift, clk->resolution);
+
 	/* calculate the drift compenastion per tick */
-	clk->drift_comp = Q31_MUL(drift, CLK_Q31(clk->resolution));
-	d = + Q31_CLK(clk->drift_comp);
+//	clk->drift_comp = Q31_MUL(drift, CLK_Q31(clk->resolution));
+//	clk_d = Q31_CLK(clk->drift_comp);
 
+	/* update the drift compensation value */
+	clk->drift_comp = CLK_Q31(clk_d);
 	/* Update the increpent per tick */
-	clk->increment = clk->resolution + d;
+	clk->increment = clk->resolution + clk_d;
 
-	DBG4("FLL d=%d res=%.9f inc=%.9f", d, 
+	DBG4("FLL d=%d res=%.9f inc=%.9f", clk_d, 
 		CLK_FLOAT(clk->resolution), CLK_FLOAT(clk->increment));
 
-	/* return the corrected drift adjustment */
+	/* return the corrected drift adjustment per second. 
+	   Q31 fixed point format */
+	return clk->drift_comp * clk->frequency;
+}
+
+int32_t clock_drift_get(struct clock * clk)
+{
 	return clk->drift_comp * clk->frequency;
 }
 
@@ -177,6 +189,7 @@ void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr)
 	/* Wed, 01 Jan 2014 00:00:00 GMT */
 //	clk->offset = (uint64_t)1388534400LL << 32;  
 	clk->offset = 0;
+	clk->jitter = 0;
 	clk->pps_flag = false;
 
 	/* associated hardware timer */

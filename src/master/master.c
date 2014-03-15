@@ -54,10 +54,12 @@ int master_temp_var;
 
 #define SIM_POLL_JITTER_US 5
 #define SIM_TEMP_MIN -20
-//#define SIM_TEMP_MAX 70
-#define SIM_TEMP_MAX 30
+#define SIM_TEMP_MAX 70
+//#define SIM_TEMP_MAX 30
 
-#define SIM_TIME_HOURS 2
+#define SIM_XTAL_OFFS_PPM 0
+#define SIM_XTAL_TC_PPM 0
+#define SIM_TIME_HOURS 1
 
 /****************************************************************************
  * Local Clock
@@ -225,7 +227,7 @@ void sim_timer_isr(void)
 
 	chime_var_rec(master_temp_var, ((sim_temperature) / 100) + 1);
 
-	if ((sim_minutes % 15) == 0) {
+	if ((sim_minutes % 1) == 0) {
 		chime_sim_vars_dump();
 	}
 }
@@ -245,6 +247,9 @@ void cpu_master(void)
 	tracef(T_DBG, "Master temperature rate = %.3f dg/minute.", sim_temp_rate);
 	DBG("Master temperature rate = %.3f dg/minute.", sim_temp_rate);
 	chime_cpu_temp_set(sim_temperature);
+	/* set an 1 minute interval timer for simulation  */
+	chime_tmr_init(3, sim_timer_isr, 60000000, 60000000);
+
 
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", NULL, NULL, NULL);
@@ -252,9 +257,6 @@ void cpu_master(void)
 	/* open simulation variable recorders */
 	master_temp_var = chime_var_open("master_temp");
 	master_clk_var = chime_var_open("master_clk");
-
-	/* set an 1 minute interval timer for simulation  */
-	chime_tmr_init(3, sim_timer_isr, 60000000, 60000000);
 
 	/* initialize RTC clock */
 	rtc_clock_init();
@@ -276,14 +278,13 @@ void cpu_master(void)
 						  chime_cpu_time());
 
 			if (++cnt == SYNCLK_POLL) {
+				cnt = 0;
 
 				//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
 				tracef(T_INF, "clk=%s", FMT_CLK(local));
 
 				pkt.timestamp = local;
 				chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
-
-				cnt = 0;
 			}
 		}
 
@@ -350,7 +351,8 @@ int main(int argc, char *argv[])
 		- offset +-25 ppm  
 		- temp drift: -0.025 ppm  
 	 */
-	if (chime_cpu_create(-25, -0.025, cpu_master) < 0) {
+//	if (chime_cpu_create(-50, -0.04, cpu_master) < 0) {
+	if (chime_cpu_create(SIM_XTAL_OFFS_PPM, SIM_XTAL_TC_PPM, cpu_master) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
 		return 3;
