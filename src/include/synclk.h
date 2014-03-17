@@ -69,11 +69,12 @@ struct clock_fll {
 struct clock_pll {
 	struct clock  * clk;
 	int32_t clk_err;
-	int32_t clk_drift;
+	int32_t drift;
 	int32_t err;
-	int32_t vco;
-	int64_t offs; /* time offset (clock format) */
-	int64_t itvl; /* interval between the last to samples */
+	int32_t ref;
+	int32_t offs;
+	int32_t ierr;
+	int64_t itvl; /* interval between the last two samples */
 	bool lock;
 	bool run;
 	struct {
@@ -91,20 +92,37 @@ struct clock_pll {
    Clock filter 
  */
 
+#define CLK_FILT_LEN 32
+
 struct clock_filt {
 	struct clock  * clk;
 	uint32_t precision;
 
+	int64_t avg;
+	int64_t offs;
+	int64_t sx1;
+	int64_t sx2;
+	int32_t x[CLK_FILT_LEN];
+	unsigned int len;
+
 	struct {
-		uint32_t delay;
-		uint32_t precision;
+		int32_t delay;
+		int32_t precision;
 		uint64_t timestamp; /* last received timestamp */
 	} peer;
+
+	struct {
+		float m2;
+		float mean;
+		float variance;
+		float sigma;
+		uint32_t n;
+	} stat;
 };
 
 struct synclk_pkt {
 	uint32_t sequence;
-	uint32_t precision;
+	int32_t precision;
 	uint64_t timestamp;
 };
 
@@ -179,8 +197,8 @@ void filt_init(struct clock_filt * filt, struct clock  * clk);
 /* Reset the clock network filter.
    - peer_delay: average network delay (CLK format)
    - peer_precision: precison of this clock (CLK format) */
-void filt_reset(struct clock_filt * filt, uint32_t peer_delay, 
-				uint32_t peer_precision);
+void filt_reset(struct clock_filt * filt, int32_t peer_delay, 
+				int32_t peer_precision);
 
 /* Called when a time packed is received from the network */
 int64_t filt_receive(struct clock_filt * filt, 

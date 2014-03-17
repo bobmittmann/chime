@@ -445,7 +445,7 @@ int __cpu_sim_loop(struct chime_node * node)
 
 	__sem_post(node->c.except_sem);
 
-	DBG("CPU:%s control end.", cpu.node->name);
+	DBG1("CPU:%s control end.", cpu.node->name);
 
 	return 0;
 }

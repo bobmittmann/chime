@@ -426,22 +426,22 @@ static void __cpu_stop(struct chime_node * node)
 		}
 	}
 
-	DBG("<%d> __mq_close()", node_id);
+	DBG5("<%d> __mq_close()", node_id);
 
 	/* close CPU's message queue */
 	__mq_close(node->c.rcv_mq);
 
-	DBG("<%d> __mq_unlink()", node_id);
+	DBG5("<%d> __mq_unlink()", node_id);
 
 	/* remove message queue name */
 	__mq_unlink(node->name);
 
-	DBG("<%d> obj_decref()", node_id);
+	DBG5("<%d> obj_decref()", node_id);
 
 	/* decrement object reference count */
 	obj_decref(node);
 
-	DBG("<%d> done!", node_id);
+	DBG5("<%d> done!", node_id);
 }
 
 int chime_client_stop(void)

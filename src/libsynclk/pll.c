@@ -26,8 +26,8 @@
 #include "synclk.h"
 #include "chime.h"
 
-__thread int offs_var;
-__thread int err_var;
+__thread int pll_offs_var;
+__thread int pll_err_var;
 __thread int de_var;
 
 //#define PLL_B 0.5
@@ -37,7 +37,7 @@ __thread int de_var;
 
 /* FC= 0.000977Hz, 1024 sec */
 
-#if 1
+#if 0
 /* Bessel
    TS=32s TC=256s (0.001953Hz) */
 #define PLL_A FLOAT_Q31(-0.41421)
@@ -45,7 +45,7 @@ __thread int de_var;
 #endif
 
 
-#if 0
+#if 1
 /* Bessel
    TS=32s TC=512s (0.001953Hz) */
 #define PLL_A FLOAT_Q31(-0.66818)
@@ -170,115 +170,68 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 	return y[0];
 }
 
-#define PLL_PROP 0.004
-#define PLL_DERIV 0.4
-#define PLL_INTERVAL SYNCLK_POLL
-
 #define PLL_DRIFT_MAX FLOAT_Q31(0.001000)
 #define PLL_OFFS_MAX FLOAT_CLK(0.1000)
 
-int32_t __pll_step(struct clock_pll * pll, int32_t freq, int32_t offs)
-{
-	int32_t freq_adj;
-	int32_t de;
-	int32_t e;
-
-	e = offs;
-	e = iir_apply(pll->f0.x, pll->f0.y, offs);
-	de = iir2_apply(pll->f1.x, pll->f1.y, (e - pll->err));
-
-	pll->err = e;
-
-//	chime_var_rec(offs_var, Q31F(offs));
-//	chime_var_rec(err_var, Q31F(e));
-//	chime_var_rec(de_var, Q31F(de));
-
-	freq_adj = freq + (Q31_MUL(e, FLOAT_Q31(PLL_PROP)) / PLL_INTERVAL) + 
-		Q31_MUL(de, FLOAT_Q31(PLL_DERIV * PLL_PROP));
-
-	DBG("e=%.8f de=%.8f", Q31_FLOAT(e), Q31_FLOAT(de));
-
-	pll->clk_drift = freq_adj;
-
-	return freq_adj;
-}
-
-int32_t __pll_phase_adjust(struct clock_pll * pll, 
-						   int32_t offs, int32_t interval)
-{
-	return __pll_step(pll, pll->clk_drift, offs);
-}
-
-int32_t pll_freq_adjust(struct clock_pll * pll, int32_t freq_adj, int32_t offs)
-{
-	return __pll_step(pll, freq_adj, offs);
-}
+#define PLL_KD 4
+#define PLL_KP 4
+#define PLL_KI 512
 
 void pll_step(struct clock_pll  * pll)
 {
-	int32_t freq_adj;
-	int32_t drift;
-	int32_t de;
-	int32_t e;
+	int32_t ierr;
+	int32_t err;
 
-	if (pll->offs > PLL_OFFS_MAX)
-		e = CLK_Q31(PLL_OFFS_MAX);
-	else if (pll->offs < -PLL_OFFS_MAX)
-		e = CLK_Q31(-PLL_OFFS_MAX);
-	else
-		e = CLK_Q31(pll->offs);
+	pll->ref = pll->ref - pll->ref / PLL_KD;
+	err = CLK_Q31(pll->offs - pll->ref);
 
-	de = e - pll->err;
-	pll->err = e;
+	pll->err = err;
+	
+	err /= PLL_KP;
 
-//	chime_var_rec(offs_var, Q31F(offs));
-//	chime_var_rec(err_var, Q31F(e));
-//	chime_var_rec(de_var, Q31F(de));
+	/* integral term */
+	ierr = pll->ierr + err / PLL_KI;
+	pll->ierr = ierr;
 
-	DBG("offs=%s e=%.8f de=%.8f", 
-		FMT_CLK(pll->offs), Q31_FLOAT(e), Q31_FLOAT(de));
-
-//	freq_adj = (Q31_MUL(e, FLOAT_Q31(PLL_PROP)) / PLL_INTERVAL) + 
-//		Q31_MUL(de, FLOAT_Q31(PLL_DERIV * PLL_PROP));
-
-//	drift += freq_adj;
-
-//	d_drift = FLOAT_Q31(Q31_FLOAT(fll->drift_err - e_drift) / dx);
-
-	freq_adj = e / 128 + de / 256;
-	drift = pll->clk_drift + freq_adj;
-		// drift = (2 * fll->drift + e_drift + 32 * d_drift) / 2;
-	/* adjust the clock */
-	pll->clk_drift = clock_drift_comp(pll->clk, drift, pll->clk_err);
-
-	/* amortize the estimated error */
-//	pll->offs -= freq_adj / 2;
-
-	e = pll->offs / 2;
-	pll->offs -= e;
+	pll->drift = clock_drift_comp(pll->clk, ierr + err, err);
+	pll->offs -= Q31_CLK(err);
+	
+	chime_var_rec(pll_offs_var, CLK_FLOAT(pll->offs) + 1.7);
+	chime_var_rec(pll_err_var, CLK_FLOAT(pll->err) + 1.65);
 
 	return;
 }
 
 void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 {
-	DBG("offs=%s itvl=%s", FMT_CLK(offs), FMT_CLK(itvl));
+	int32_t x;
+	float dt;
+	(void)dt;
 
-	if ((offs > PLL_OFFS_MAX) || (offs < -PLL_OFFS_MAX)) {
+	if ((offs >= PLL_OFFS_MAX) || (offs <= -PLL_OFFS_MAX)) {
 		WARN("clock_step()!!");
 		/* force clock to reference */
 		clock_step(pll->clk, offs);
 		pll->offs = 0;
+		pll->ref = 0;
 		return;
 	}
 
 	pll->itvl = itvl;
-	/* Set the offset reference */
-	pll->offs = offs;
-	/* Average the estimated error */
-	pll->clk_err = (pll->clk_err + offs) / 2;
-	/* Average the estimated error */
-	pll->err = (pll->err + offs) / 2;
+
+//	offs_rem = offs;
+//	offs_rem = iir_apply(pll->f0.x, pll->f0.y, offs);
+//	offs_rem = iir2_apply(pll->f1.x, pll->f1.y, offs);
+//	x = (pll->offs + offs) / 2;
+//	x = iir2_apply(pll->f1.x, pll->f1.y, offs);
+	x = iir_apply(pll->f0.x, pll->f0.y, offs);
+	pll->offs = x;
+	pll->ref = x;
+
+	dt = CLK_FLOAT(offs) / CLK_FLOAT(itvl);
+//	x = 2 * offs / (K - 1);
+
+	DBG("offs=%s itvl=%s dt=%.6f", FMT_CLK(pll->offs), FMT_CLK(pll->itvl), dt);
 }
 
 void pll_reset(struct clock_pll  * pll)
@@ -287,9 +240,10 @@ void pll_reset(struct clock_pll  * pll)
 
 	pll->run = false;
 	pll->lock = false;
-	pll->clk_drift = 0;
-	pll->clk_err = 0;
+	pll->drift = 0;
+	pll->offs = 0;
 	pll->err = 0;
+	pll->ref = 0;
 
 	/* IIR order filer */
 	for (i = 0; i < sizeof(pll->f0.x) / sizeof(int32_t); ++i) {
@@ -309,8 +263,13 @@ void pll_init(struct clock_pll  * pll, struct clock  * clk)
 	pll->clk = clk;
 	pll->run = false;
 	pll->lock = false;
-	pll->clk_drift = 0;
-	pll->clk_err = 0;
+	pll->drift = 0;
+	pll->offs = 0;
 	pll->err = 0;
+	pll->ref = 0;
+
+	/* open a simulation variable recorder */
+	pll_offs_var = chime_var_open("pll_offs");
+	pll_err_var = chime_var_open("pll_err");
 }
 

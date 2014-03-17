@@ -55,11 +55,11 @@ int master_temp_var;
 #define SIM_POLL_JITTER_US 5
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
-//#define SIM_TEMP_MAX 30
 
-#define SIM_XTAL_OFFS_PPM 0
-#define SIM_XTAL_TC_PPM 0
-#define SIM_TIME_HOURS 1
+#define SIM_XTAL_OFFS_PPM 100
+#define SIM_XTAL_TC_PPM -0.05
+
+#define SIM_TIME_HOURS 3
 
 /****************************************************************************
  * Local Clock
@@ -199,18 +199,37 @@ void rtc_clock_init(void)
 /****************************************************************************
  * Main CPU simulation
  ****************************************************************************/
+
+#define SIM_TIME_MINUTES (SIM_TIME_HOURS * 60)
 static __thread int sim_minutes;
+static __thread int sim_timeout;
 static __thread float sim_temperature;
 static __thread float sim_temp_rate;
+static __thread bool net_disabled;
+
+#define SIM_NET_PAUSE1  (int)(SIM_TIME_MINUTES * 0.5)
+#define SIM_NET_RESUME1 (int)(SIM_TIME_MINUTES * 0.75)
 
 void sim_timer_isr(void)
 {
-	if (--sim_minutes == 0) {
+	if (++sim_minutes == sim_timeout) {
 		tracef(T_DBG, "Halting the simulation.");
 		chime_sim_vars_dump();
 		chime_cpu_halt();
 //		chime_cpu_self_destroy();
 	}
+
+	switch (sim_minutes) {
+	case SIM_NET_PAUSE1:
+		tracef(T_INF, "Network paused.");
+//		net_disabled = true;
+		break;
+	case SIM_NET_RESUME1:
+		tracef(T_INF, "Network resumed.");
+//		net_disabled = false;
+		break;
+	}
+
 
 	DBG1("temp=%.2f dg.C clk=%.1f ppm", 
 		 chime_cpu_temp_get(), chime_cpu_ppm_get());
@@ -241,15 +260,17 @@ void cpu_master(void)
 	(void)cnt;
 	(void)pkt;
 
-	sim_minutes = SIM_TIME_HOURS * 60;
+	sim_minutes = 0;
+	sim_timeout = SIM_TIME_MINUTES;
 	sim_temperature = SIM_TEMP_MIN;
-	sim_temp_rate = (2.0 * SIM_TEMP_MAX - SIM_TEMP_MIN) / sim_minutes;
+	sim_temp_rate = (2.0 * SIM_TEMP_MAX - SIM_TEMP_MIN) / sim_timeout;
+	net_disabled = false;
+
 	tracef(T_DBG, "Master temperature rate = %.3f dg/minute.", sim_temp_rate);
 	DBG("Master temperature rate = %.3f dg/minute.", sim_temp_rate);
 	chime_cpu_temp_set(sim_temperature);
 	/* set an 1 minute interval timer for simulation  */
 	chime_tmr_init(3, sim_timer_isr, 60000000, 60000000);
-
 
 	/* ARCnet network */
 	chime_comm_attach(ARCNET_COMM, "ARCnet", NULL, NULL, NULL);
@@ -263,6 +284,9 @@ void cpu_master(void)
 
 	/* initialize local clock */
 	local_clock_init();
+
+    /* XXX: simulation. Set the initial clock offset */
+	clock_step(&local_clock, FLOAT_CLK(+1.6));
 
 	pkt.sequence = 0;
 
@@ -281,10 +305,14 @@ void cpu_master(void)
 				cnt = 0;
 
 				//chime_var_rec(var, LFP2D(local) - chime_cpu_time());
-				tracef(T_INF, "clk=%s", FMT_CLK(local));
 
 				pkt.timestamp = local;
-				chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
+				if (!net_disabled) {
+					tracef(T_INF, "clk=%s", FMT_CLK(local));
+					chime_comm_write(ARCNET_COMM, &pkt, sizeof(pkt));
+				}
+
+				cnt = 0;
 			}
 		}
 
@@ -299,7 +327,7 @@ void cpu_master(void)
 	}
 }
 
-#define ARCNET_SPEED_BPS (2500000 / 4)
+#define ARCNET_SPEED_BPS (2500000.0 / 4)
 #define ARCNET_BIT_TM (1.0 / ARCNET_SPEED_BPS)
 
 int main(int argc, char *argv[]) 
@@ -317,7 +345,7 @@ int main(int argc, char *argv[])
 		.max_jitter = 12000 * ARCNET_BIT_TM, /* seconds */
 		.min_delay = 272 * ARCNET_BIT_TM,  /* minimum delay in seconds */
 		.nod_delay = 100 * ARCNET_BIT_TM,  /* per node delay in seconds */
-		.hist_en = true, /* enable distribution histogram */
+		.hist_en = false, /* enable distribution histogram */
 		.txbuf_en = true, /* enable xmit buffer */
 		.dcd_en = false, /* enable data carrier detect */
 		.exp_en = true/* enable exponential distribution */

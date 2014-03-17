@@ -3,7 +3,7 @@ set terminal windows
 #set terminal png size 2048,768 font 'Verdana,12'
 #set output './rtc_time.png'
 set offset graph 0.0,0.0,0.0,0.0
-set autoscale
+set autoscale x
 # labels
 set xlabel 'Time(s)'
 set ylabel 'rtc_time'
@@ -11,6 +11,8 @@ set ylabel 'rtc_time'
 set style line 11 lc rgb '#808080' lt 1
 set border 3 back ls 11
 set tics out nomirror
+set yrange[1.6:1.9] noreverse
+set ytics 0.025
 # define grid
 set style line 12 lc rgb '#808080' lt 0 lw 1
 set grid back ls 12
@@ -20,14 +22,20 @@ set style line 2 lc rgb '#20c020' pt 0 lt 1 lw 2
 set style line 3 lc rgb '#2020c0' pt 0 lt 1 lw 2
 set style line 4 lc rgb '#e08010' pt 0 lt 1 lw 2
 set style line 5 lc rgb '#c0c0f0' pt 0 lt 1 lw 2
+set style line 6 lc rgb '#c040c0' pt 0 lt 1 lw 2
+set style line 7 lc rgb '#808040' pt 0 lt 1 lw 2
 
-plot './rtc_time.dat' using 1:2 with lp ls 2 title "RTC Time", \
-	'./rtc_clk.dat' using 1:2 with lp ls 5 title "RTC Clk", \
+# './rtc_time.dat' using 1:2 with lp ls 2 title "RTC Time", \
+
+plot './rtc_clk.dat' using 1:2 with lp ls 5 title "RTC Clk", \
 	'./master_clk.dat' using 1:2 with lp ls 3 title "Master Clk", \
 	'./slave_clk.dat' using 1:2 with lp ls 1 title "Slave Clk", \
-	'./master_temp.dat' using 1:2 with lp ls 4 title "Master Temp" 
+	'./pll_err.dat' using 1:2 with lp ls 6 title "PLL Err", \
+	'./pll_offs.dat' using 1:2 with lp ls 4 title "PLL Offs", \
+	'./filt_avg.dat' using 1:2 with lp ls 2 title "Avg Offs", \
+	'./filt_mean.dat' using 1:2 with lp ls 7 title "Mean Offs"
 
-#quit
+quit
 
 pause 2
 reread
