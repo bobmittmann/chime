@@ -42,15 +42,15 @@
 #if ENABLE_CLK_HIGH_RESOLUTION
 /* Hardware timer frequency */
 #define HW_TMR_FREQ_HZ 1000000
+//#define HW_TMR_FREQ_HZ 110000000
 #include "chime.h" 
 
 uint64_t clock_timestamp(struct clock * clk) 
 {
 	register uint32_t cnt0;
 	register uint32_t cnt1;
-	register int32_t ticks;
 	register uint64_t ts;
-	register int64_t dt;
+	register uint32_t dt;
 
 	do {
 		cnt0 = chime_tmr_count(clk->hw_tmr);
@@ -59,9 +59,15 @@ uint64_t clock_timestamp(struct clock * clk)
 	} while (cnt1 < cnt0);
 
 	/* hardware timer ticks */
-	ticks = cnt0 * clk->n_freq + Q31_MUL(cnt0, clk->q_freq);
+//	dt = ((uint64_t)clk->increment * cnt0 * clk->tmr_k + (1LL << 30)) >> 31;
 
-	dt = (int64_t)Q31_MUL(clk->increment, ticks) / HW_TMR_FREQ_HZ;
+	dt = (float)cnt0 * clk->increment * clk->tmr_fk;
+	
+	DBG5("cnt=%d k=%.12f dt=%.6f", cnt0, clk->tmr_fk, CLK_FLOAT(dt));
+
+	DBG3("Fclk=%d.%06d cnt=%d inc=%.9f dt=%.9f", 
+		 clk->n_freq, (int)Q31_MUL(clk->q_freq, 1000000), 
+		 cnt1, CLK_FLOAT(clk->increment), CLK_FLOAT(dt)); 
 
 	/* [sec] * [ticks] */
 
@@ -180,7 +186,6 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 	return q31_d * clk->n_freq + Q31_MUL(q31_d, clk->q_freq);
 }
 
-
 int32_t clock_drift_get(struct clock * clk)
 {
 	register int32_t q31_d = clk->drift_comp;
@@ -189,23 +194,24 @@ int32_t clock_drift_get(struct clock * clk)
 }
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, int32_t tick_itvl, int hw_tmr)
+void clock_init(struct clock * clk, uint32_t tick_itvl, int hw_tmr)
 {
 	unsigned int period_us;
 	float freq_hz;
 
-	freq_hz = 1.0 / Q31_FLOAT(tick_itvl);
+	freq_hz = 1.0 / CLK_FLOAT(tick_itvl);
 
 	clk->timestamp = 0;
-	clk->resolution = Q31_CLK(tick_itvl);
+	clk->resolution = tick_itvl;
 	clk->n_freq = freq_hz;
 	clk->q_freq = FLOAT_Q31(freq_hz - clk->n_freq);
 	clk->drift_comp = 0;
 	clk->increment = clk->resolution;
-//	clk->hw_tmr_itv = FLOAT_Q31(1.0 / HW_TMR_FREQ_HZ);
-
-
-	INF("freq=%d.%06d Hz", clk->n_freq, (int)Q31_MUL(clk->q_freq, 1000000));
+	clk->tmr_k = (uint64_t)(1LL << 63) / ((int64_t)tick_itvl * HW_TMR_FREQ_HZ);
+	clk->tmr_fk = freq_hz / HW_TMR_FREQ_HZ;
+		
+	INF("freq=%d.%06d Hz, k=%.12f", clk->n_freq, 
+		(int)Q31_MUL(clk->q_freq, 1000000), clk->tmr_fk);
 
 	/* Wed, 01 Jan 2014 00:00:00 GMT */
 //	clk->offset = (uint64_t)1388534400LL << 32;  

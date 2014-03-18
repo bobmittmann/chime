@@ -92,7 +92,10 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 			}
 			break;
 		} 
-	
+
+		if (offs < 0)
+			break;
+
 		/* As the clock rate is slower than the RTC clock
 		   RTC_rate = 1 sec/sec (assumed to be corrrect)
 		   CLK_rate = 1 / 1.000250 = 0.99975 sec/sec (for 250 ppm)
@@ -170,7 +173,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		/* adjust the clock */
 		fll->clk_drift = clock_drift_comp(fll->clk, drift, fll->clk_err);
 
-		DBG("FLL freq=%.9f e_drift=%.9f d_drift=%.9f drift=%.9f ", 
+		DBG5("FLL freq=%.9f e_drift=%.9f d_drift=%.9f drift=%.9f ", 
 			freq, Q31_FLOAT(e_drift), Q31_FLOAT(d_drift), 
 			Q31_FLOAT(fll->clk_drift));
 

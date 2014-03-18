@@ -51,6 +51,8 @@ struct clock {
 	int32_t q_freq; /* frequency decimal part */
 	int32_t drift_comp; /* drift compensation seconds per ticks */
 	int32_t jitter;
+	int64_t tmr_k; /* multiplication factor for hw timer ticks conversion */
+	float tmr_fk; /* multiplication factor for hw timer ticks conversion */
 	bool pps_flag;
 	int hw_tmr;
 };
@@ -171,7 +173,7 @@ void clock_step(struct clock * clk, int64_t dt);
 int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err);
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, int32_t tick_itvl, int hw_tmr);
+void clock_init(struct clock * clk, uint32_t tick_itvl, int hw_tmr);
 
 
 /****************************************************************************
@@ -235,7 +237,7 @@ char * fmt_clk_ms(char * s, int64_t ts);
 
 /* Format a clock timetamp into a string with microsseconds resolution.
    The string has to be at least 20 characters long */
-char * fmt_clk_us(char * s, uint64_t ts);
+char * fmt_clk_us(char * s, int64_t ts);
 #define FMT_CLK_US(TS) fmt_clk_us(({char __s[20]; __s;}), (int64_t)(TS))
 
 /* Format a Q31 number using 3 decimal places */

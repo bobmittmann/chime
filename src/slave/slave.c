@@ -51,13 +51,13 @@ int slave_temp_var;
 #define SIM_TEMP_MAX 70
 
 #define SIM_TIME_HOURS 6
-#define SIM_DUMMY_NETWORK_NODES 61
+#define SIM_DUMMY_NETWORK_NODES 15
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-#define LOCAL_CLOCK_FREQ_HZ 16
+#define LOCAL_CLOCK_FREQ_HZ 8
 
 static struct clock local_clock;
 
@@ -71,7 +71,8 @@ void local_clock_tmr_isr(void)
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, LOCAL_CLOCK_FREQ_HZ, LOCAL_CLOCK_TMR);
+	clock_init(&local_clock, FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), 
+			   LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
 		unsigned int period_us;

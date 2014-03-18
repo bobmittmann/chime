@@ -45,7 +45,7 @@ char * fmt_clk_opt(char * s, int64_t ts, int opt)
 		ts = -ts;
 	}
 
-	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	us = ((ts & 0xffffffffLL) * 1000000 + (1LL << 31)) >> 32;
 	sec = ts >> 32;
 	min = sec / 60;
 	sec -= min * 60;
@@ -96,7 +96,7 @@ char * fmt_clk(char * s, int64_t ts)
 		ts = -ts;
 	}
 
-	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	us = ((ts & 0xffffffffLL) * 1000000 + (1LL << 31)) >> 32;
 	sec = ts >> 32;
 	min = sec / 60;
 	sec -= min * 60;
@@ -142,7 +142,7 @@ char * fmt_clk_ms(char * s, int64_t ts)
 		ts = -ts;
 	}
 
-	ms = ((ts & 0xffffffffLL) * 1000) >> 32;
+	ms = ((ts & 0xffffffffLL) * 1000 + (1LL << 31)) >> 32;
 	sec = ts >> 32;
 	min = sec / 60;
 	sec -= min * 60;
@@ -160,7 +160,7 @@ char * fmt_clk_ms(char * s, int64_t ts)
 }
 
 /* format a clock timestamp, mircosseconds resolution  */
-char * __fmt_clk_us(char * s, int64_t ts)
+char * fmt_clk_us(char * s, int64_t ts)
 {
 	bool neg = false;
 	uint32_t sec;
@@ -175,7 +175,7 @@ char * __fmt_clk_us(char * s, int64_t ts)
 		ts = -ts;
 	}
 
-	us = ((ts & 0xffffffffLL) * 1000000) >> 32;
+	us = ((ts & 0xffffffffLL) * 1000000 + (1LL << 31)) >> 32;
 	sec = ts >> 32;
 	min = sec / 60;
 	sec -= min * 60;

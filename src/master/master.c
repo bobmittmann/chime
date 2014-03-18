@@ -56,24 +56,26 @@ int master_temp_var;
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
 
-#define SIM_XTAL_OFFS_PPM 100
+#define SIM_XTAL_OFFS_PPM -100
 #define SIM_XTAL_TC_PPM -0.05
+//#define SIM_XTAL_OFFS_PPM 0
+//#define SIM_XTAL_TC_PPM 0
 
 #define SIM_TIME_HOURS 6
 
 #define RTC_NOMINAL_POLL_FREQ_HZ 8
-#define RTC_POLL_SHIFT_PPM 250
+#define RTC_POLL_SHIFT_PPM 300
 
-#define RTC_POLL_FREQ_HZ  (RTC_NOMINAL_POLL_FREQ_HZ + \
-						   0.000001 * RTC_POLL_SHIFT_PPM)
+#define RTC_POLL_FREQ_HZ  (RTC_NOMINAL_POLL_FREQ_HZ *  \
+						   (1.0 - 0.000001 * RTC_POLL_SHIFT_PPM))
 
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-//#define LOCAL_CLOCK_FREQ_HZ RTC_POLL_FREQ_HZ 
-#define LOCAL_CLOCK_FREQ_HZ 9.005
+#define LOCAL_CLOCK_FREQ_HZ RTC_POLL_FREQ_HZ 
+//#define LOCAL_CLOCK_FREQ_HZ 10
 
 static struct clock local_clock;
 
@@ -87,7 +89,7 @@ void local_clock_tmr_isr(void)
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, FLOAT_Q31(1.0 / LOCAL_CLOCK_FREQ_HZ), 
+	clock_init(&local_clock, FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), 
 			   LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
@@ -190,6 +192,11 @@ void rtc_clock_init(void)
 		rtc_connect(I2C_RTC_COMM);
 
 		rtc_poll_flag = false;
+
+		INF("RTC poll=%.3f Hz, beat=%.9f Hz (%.1f secs)", RTC_POLL_FREQ_HZ,
+			(RTC_NOMINAL_POLL_FREQ_HZ - RTC_POLL_FREQ_HZ),
+			1.0/(RTC_NOMINAL_POLL_FREQ_HZ - RTC_POLL_FREQ_HZ) );
+
 		/* WARNING: 
 		   RTC_SHIFT_PPM is used to force the timer poll roling..
 		   This is necessary to detect edges, allowing the FLL to converge.
@@ -297,6 +304,21 @@ void cpu_master(void)
 	/* initialize local clock */
 	local_clock_init();
 
+#if 0
+	for (;;) {
+		chime_cpu_wait();
+
+		local = clock_time_get(&local_clock);
+		DBG("1. clock = %s.", FMT_CLK(local));
+		chime_cpu_step(10000);
+		local = clock_time_get(&local_clock);
+		DBG("2. clock = %s.", FMT_CLK(local));
+		chime_cpu_step(10000);
+		local = clock_time_get(&local_clock);
+		DBG("3. clock = %s.", FMT_CLK(local));
+	}
+#endif
+
     /* XXX: simulation. Set the initial clock offset */
 	clock_step(&local_clock, FLOAT_CLK(+1.6));
 
@@ -391,7 +413,6 @@ int main(int argc, char *argv[])
 		- offset +-25 ppm  
 		- temp drift: -0.025 ppm  
 	 */
-//	if (chime_cpu_create(-50, -0.04, cpu_master) < 0) {
 	if (chime_cpu_create(SIM_XTAL_OFFS_PPM, SIM_XTAL_TC_PPM, cpu_master) < 0) {
 		ERR("chime_cpu_create() failed!");	
 		chime_client_stop();
@@ -400,7 +421,7 @@ int main(int argc, char *argv[])
 
 	rtc_sim_init();
 
-//	chime_reset_all();
+	chime_reset_all();
 
 	chime_except_catch(NULL);
 

@@ -1,3 +1,4 @@
+reset
 #set terminal wxt
 set terminal windows
 #set terminal png size 2048,768 font 'Verdana,12'
