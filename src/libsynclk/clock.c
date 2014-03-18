@@ -48,22 +48,27 @@ uint64_t clock_timestamp(struct clock * clk)
 {
 	register uint32_t cnt0;
 	register uint32_t cnt1;
+	register int32_t ticks;
 	register uint64_t ts;
 	register int64_t dt;
 
 	do {
-		ts = clk->timestamp;
 		cnt0 = chime_tmr_count(clk->hw_tmr);
+		ts = clk->timestamp;
 		cnt1 = chime_tmr_count(clk->hw_tmr);
 	} while (cnt1 < cnt0);
 
-	dt = (int64_t)clk->increment * cnt1 * clk->frequency / HW_TMR_FREQ_HZ;
+	/* hardware timer ticks */
+	ticks = cnt0 * clk->n_freq + Q31_MUL(cnt0, clk->q_freq);
+
+	dt = (int64_t)Q31_MUL(clk->increment, ticks) / HW_TMR_FREQ_HZ;
 
 	/* [sec] * [ticks] */
 
 	if (dt != 0) {
-		DBG5("Fclk=%d cnt=%d inc=%.9f dt=%.9f", 
-			clk->frequency, cnt1, CLK_FLOAT(clk->increment), CLK_FLOAT(dt)); 
+		DBG5("Fclk=%d.%06d cnt=%d inc=%.9f dt=%.9f", 
+			clk->n_freq, (int)Q31_MUL(clk->q_freq, 1000000), 
+			cnt1, CLK_FLOAT(clk->increment), CLK_FLOAT(dt)); 
 	}
 
 	return ts + dt;
@@ -142,7 +147,8 @@ void clock_step(struct clock * clk, int64_t dt)
 /* Adjust the clock frequency */ 
 int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 {
-	int32_t clk_d;
+	register int32_t clk_d;
+	register int32_t q31_d;
 
 	/* limit the maximum drift correction */
 	if (drift > CLOCK_DRIFT_MAX)
@@ -152,6 +158,8 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 
 	/* average the estimated error */
 	clk->jitter = (clk->jitter + est_err) / 2;
+
+
 	clk_d = Q31_MUL(drift, clk->resolution);
 
 	/* calculate the drift compenastion per tick */
@@ -159,7 +167,8 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 //	clk_d = Q31_CLK(clk->drift_comp);
 
 	/* update the drift compensation value */
-	clk->drift_comp = CLK_Q31(clk_d);
+	q31_d = CLK_Q31(clk_d);
+	clk->drift_comp = q31_d;
 	/* Update the increpent per tick */
 	clk->increment = clk->resolution + clk_d;
 
@@ -168,24 +177,36 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 
 	/* return the corrected drift adjustment per second. 
 	   Q31 fixed point format */
-	return clk->drift_comp * clk->frequency;
+	return q31_d * clk->n_freq + Q31_MUL(q31_d, clk->q_freq);
 }
+
 
 int32_t clock_drift_get(struct clock * clk)
 {
-	return clk->drift_comp * clk->frequency;
+	register int32_t q31_d = clk->drift_comp;
+
+	return q31_d * clk->n_freq + Q31_MUL(q31_d, clk->q_freq);
 }
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr)
+void clock_init(struct clock * clk, int32_t tick_itvl, int hw_tmr)
 {
 	unsigned int period_us;
+	float freq_hz;
+
+	freq_hz = 1.0 / Q31_FLOAT(tick_itvl);
 
 	clk->timestamp = 0;
-	clk->resolution = FLOAT_CLK(1.0 / tick_freq_hz);
-	clk->frequency = tick_freq_hz;
+	clk->resolution = Q31_CLK(tick_itvl);
+	clk->n_freq = freq_hz;
+	clk->q_freq = FLOAT_Q31(freq_hz - clk->n_freq);
 	clk->drift_comp = 0;
 	clk->increment = clk->resolution;
+//	clk->hw_tmr_itv = FLOAT_Q31(1.0 / HW_TMR_FREQ_HZ);
+
+
+	INF("freq=%d.%06d Hz", clk->n_freq, (int)Q31_MUL(clk->q_freq, 1000000));
+
 	/* Wed, 01 Jan 2014 00:00:00 GMT */
 //	clk->offset = (uint64_t)1388534400LL << 32;  
 	clk->offset = 0;
@@ -195,10 +216,11 @@ void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr)
 	/* associated hardware timer */
 	clk->hw_tmr = hw_tmr;
 
-	period_us = 1000000 / tick_freq_hz;
+	period_us = 1000000 / freq_hz;
 	(void)period_us;
 	INF("period=%d.%03d ms, resolution=%.6f", 
 		period_us / 1000, period_us % 1000, CLK_FLOAT(clk->resolution));
+
 }
 
 

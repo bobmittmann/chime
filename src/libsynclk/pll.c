@@ -30,12 +30,26 @@ __thread int pll_offs_var;
 __thread int pll_err_var;
 __thread int de_var;
 
+#ifndef ENABLE_PLL_LOW_PASS
+#define ENABLE_PLL_LOW_PASS 1
+#endif
+
+#define PLL_OFFS_MAX FLOAT_CLK(0.0625)
+
+
 //#define PLL_B 0.5
 //#define PLL_A 0
 
 /* FC = 0.001953Hz, 512 sec */
 
 /* FC= 0.000977Hz, 1024 sec */
+
+#if 1
+/* Bessel
+   TS=32s TC=128s (0.001953Hz) */
+#define PLL_A FLOAT_Q31(0.5)
+#define PLL_B FLOAT_Q31(0.5)
+#endif
 
 #if 0
 /* Bessel
@@ -45,7 +59,7 @@ __thread int de_var;
 #endif
 
 
-#if 1
+#if 0
 /* Bessel
    TS=32s TC=512s (0.001953Hz) */
 #define PLL_A FLOAT_Q31(-0.66818)
@@ -139,6 +153,7 @@ __thread int de_var;
 #define PLL_B2 FLOAT_Q31(0.29289/PLL_A0)
 */
 
+#if ENABLE_PLL_LOW_PASS
 static int32_t iir_apply(int32_t x[], int32_t y[], int32_t v) 
 {
 	/* Shift the old samples */
@@ -149,6 +164,7 @@ static int32_t iir_apply(int32_t x[], int32_t y[], int32_t v)
 	y[0] = Q31_MUL(PLL_B, x[0] + x[1]) - Q31_MUL(PLL_A, y[1]);
 	return y[0];
 }
+#endif
 
 int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 {
@@ -170,13 +186,11 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 	return y[0];
 }
 
-#define PLL_DRIFT_MAX FLOAT_Q31(0.001000)
-#define PLL_OFFS_MAX FLOAT_CLK(0.1000)
-
-#define PLL_KD 4
-#define PLL_KP 4
+#define PLL_KD 2
+#define PLL_KP 8
 #define PLL_KI 512
 
+#if 0
 void pll_step(struct clock_pll  * pll)
 {
 	int32_t ierr;
@@ -201,6 +215,32 @@ void pll_step(struct clock_pll  * pll)
 
 	return;
 }
+#endif
+
+void pll_step(struct clock_pll  * pll)
+{
+	int32_t ierr;
+	int32_t err;
+
+	pll->ref = pll->ref - pll->ref / PLL_KD;
+	err = pll->offs - pll->ref;
+
+	pll->err = err;
+	
+	err /= PLL_KP;
+
+	/* integral term */
+	ierr = pll->ierr + err / PLL_KI;
+	pll->ierr = ierr;
+
+	pll->drift = clock_drift_comp(pll->clk, ierr + err, err);
+	pll->offs -= err;
+	
+	chime_var_rec(pll_offs_var, Q31_FLOAT(pll->offs) + 1.7);
+	chime_var_rec(pll_err_var, Q31_FLOAT(pll->err) + 1.65);
+
+	return;
+}
 
 void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 {
@@ -219,17 +259,15 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 
 	pll->itvl = itvl;
 
-//	offs_rem = offs;
-//	offs_rem = iir_apply(pll->f0.x, pll->f0.y, offs);
-//	offs_rem = iir2_apply(pll->f1.x, pll->f1.y, offs);
-//	x = (pll->offs + offs) / 2;
+	x = CLK_Q31(offs);
 //	x = iir2_apply(pll->f1.x, pll->f1.y, offs);
-	x = iir_apply(pll->f0.x, pll->f0.y, offs);
+#if ENABLE_PLL_LOW_PASS
+	x = iir_apply(pll->f0.x, pll->f0.y, x);
+#endif
 	pll->offs = x;
 	pll->ref = x;
 
 	dt = CLK_FLOAT(offs) / CLK_FLOAT(itvl);
-//	x = 2 * offs / (K - 1);
 
 	DBG("offs=%s itvl=%s dt=%.6f", FMT_CLK(pll->offs), FMT_CLK(pll->itvl), dt);
 }

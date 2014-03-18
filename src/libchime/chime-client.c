@@ -460,7 +460,7 @@ int chime_client_stop(void)
 		/* stop CPUs */
 		for (i = 1; i <= PTR_LIST_LEN(client.node_lst); ++i) {
 			node = client.node_lst[i];
-			DBG("<%d> closing...", node->id);
+			DBG1("<%d> closing...", node->id);
 			__cpu_stop(node);
 		}
 

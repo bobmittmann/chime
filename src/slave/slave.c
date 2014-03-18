@@ -50,7 +50,7 @@ int slave_temp_var;
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
 
-#define SIM_TIME_HOURS 3
+#define SIM_TIME_HOURS 6
 #define SIM_DUMMY_NETWORK_NODES 61
 
 /****************************************************************************
@@ -208,7 +208,7 @@ void cpu_slave(void)
 			local_ts = clock_time_get(&local_clock);
 
 			offs = filt_receive(&filt, remote_ts, local_ts);
-			if (offs != INT64_MAX) {
+			if (offs != CLK_OFFS_INVALID) {
 				tracef(T_DBG, "clk=%s offs=%s", 
 					   FMT_CLK(local_ts), FMT_CLK(offs));
 				DBG1("remote=%s local=%s offs=%s", 

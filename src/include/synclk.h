@@ -18,17 +18,28 @@
 #define CLK_MS(X)        (((int64_t)(X) * 1000LL) / 4294967296LL)
 /* convert from clock interval to milliseconds */
 #define CLK_SEC(X)       ((int32_t)((int64_t)(X) / 4294967296LL))
-/* Convert from fixed point Q31 to clock interval */
-#define Q31_CLK(X)       ((int64_t)((X) * 2))
-/* Convert from clock interval to fixed point Q31 */
-#define CLK_Q31(X)       ((int32_t)(((X) + 1) / 2)) 
-/* Convert from fixed point Q31 to float point */
-#define Q31_FLOAT(X)     ((float)(X) / 2147483648.)
-/* Convert from float point to fixed point Q31 */
-#define FLOAT_Q31(X)     ((int32_t)((X) * 2147483648.))
 
+/* Q31.32 multiplication */
+#define CLK_MUL(X1, X2)   (((int64_t)(X1) * (int64_t)(X2)) >> 32)
+/* Q31.32 division */
+#define CLK_DIV(NUM, DEN) (((int64_t)(NUM) << 32) / (int32_t)(DEN))
+
+
+/* Convert from fixed point Q1.31 to clock interval */
+#define Q31_CLK(X)       ((int64_t)((X) * 2))
+/* Convert from clock interval to fixed point Q1.31 */
+#define CLK_Q31(X)       ((int32_t)(((X) + 1) / 2)) 
+/* Convert from fixed point Q1.31 to float point */
+#define Q31_FLOAT(X)     ((float)(X) / 2147483648.)
+/* Convert from float point to fixed point Q1.31 */
+#define FLOAT_Q31(X)     ((int32_t)((X) * 2147483648.))
+/* Q1.31 multiplication */
 #define Q31_MUL(X1, X2)   (((int64_t)(X1) * (int64_t)(X2)) >> 31)
+/* Q1.31 division */
 #define Q31_DIV(NUM, DEN) (((int64_t)(NUM) << 31) / (int32_t)(DEN))
+
+
+#define CLK_OFFS_INVALID INT64_MIN
 
 
 struct clock {
@@ -36,8 +47,9 @@ struct clock {
 	uint64_t offset; /* clock offset */
 	uint32_t resolution; /* fractional clock resolution */
 	uint32_t increment; /* fractional per tick increment */
-	uint32_t frequency;
-	int32_t drift_comp;
+	int32_t n_freq; /* frequency itegral part */
+	int32_t q_freq; /* frequency decimal part */
+	int32_t drift_comp; /* drift compensation seconds per ticks */
 	int32_t jitter;
 	bool pps_flag;
 	int hw_tmr;
@@ -98,12 +110,14 @@ struct clock_filt {
 	struct clock  * clk;
 	uint32_t precision;
 
-	int64_t avg;
-	int64_t offs;
+	bool spike; /* spike indication */
+	int64_t offs; /* last offset value */
+	int32_t average; /* moving average */
+	int32_t variance; /* moving variance */
 	int64_t sx1;
-	int64_t sx2;
-	int32_t x[CLK_FILT_LEN];
+	int32_t sx2;
 	unsigned int len;
+	int32_t x[CLK_FILT_LEN];
 
 	struct {
 		int32_t delay;
@@ -112,11 +126,9 @@ struct clock_filt {
 	} peer;
 
 	struct {
-		float m2;
-		float mean;
-		float variance;
-		float sigma;
-		uint32_t n;
+		uint64_t spike;
+		uint64_t drop;
+		uint64_t step;
 	} stat;
 };
 
@@ -159,15 +171,12 @@ void clock_step(struct clock * clk, int64_t dt);
 int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err);
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, uint32_t tick_freq_hz, int hw_tmr);
+void clock_init(struct clock * clk, int32_t tick_itvl, int hw_tmr);
 
 
 /****************************************************************************
  * Clock PLL (Phase Locked Loop) functions 
  ****************************************************************************/
-
-int32_t pll_freq_adjust(struct clock_pll * pll, 
-						int32_t freq_adj, int32_t offs);
 
 void pll_reset(struct clock_pll  * pll);
 

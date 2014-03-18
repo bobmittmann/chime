@@ -27,29 +27,52 @@
 #include "chime.h"
 
 __thread int filt_avg_var;
-__thread int filt_mean_var;
+__thread int filt_sigma_var;
+__thread int filt_offs_var;
 
 #define	CLOCK_PHI FLOAT_CLK(15e-6) /* max frequency error (s/s) */
+#define FILT_OFFS_MAX FLOAT_CLK(0.1250)
+
+static void __filt_clear(struct clock_filt * filt)
+{
+	int i;
+
+	filt->spike = false;
+	filt->offs = 0;
+	filt->average = 0;
+	filt->variance = CLK_MUL(FILT_OFFS_MAX, FILT_OFFS_MAX);
+	filt->len = 0;
+	filt->sx1 = 0;
+	filt->sx2 = 0;
+
+	for (i = 0; i < CLK_FILT_LEN; ++i) 
+		filt->x[i] = 0;
+}
+
+static void __filt_stat_clear(struct clock_filt * filt)
+{
+	filt->stat.spike = 0;
+	filt->stat.step = 0;
+	filt->stat.drop = 0;
+}
 
 void filt_init(struct clock_filt * filt, struct clock  * clk)
 {
 	filt->clk = clk; 
 	filt->precision = clk->resolution; 
 
-	filt->peer.precision = 0;
 	filt->peer.delay = 0;
+	filt->peer.precision = 0;
 
-	filt->stat.variance = 0;
-	filt->stat.mean = 0;
-	filt->stat.n = 0;
-
-	filt->avg = 0;
-	filt->len = 0;
+	__filt_clear(filt);
+	__filt_stat_clear(filt);
 
 	/* open a simulation variable recorder */
-	filt_mean_var = chime_var_open("filt_mean");
 	filt_avg_var = chime_var_open("filt_avg");
+	filt_sigma_var = chime_var_open("filt_sigma");
+	filt_offs_var = chime_var_open("filt_offs");
 }
+
 
 /* Reset the clock network filter.
    - peer_delay: average network delay (CLK format)
@@ -60,36 +83,15 @@ void filt_reset(struct clock_filt * filt, int32_t peer_delay,
 	filt->peer.delay  = peer_delay;
 	filt->peer.precision = peer_precision;
 
-	filt->stat.variance = 0;
-	filt->stat.mean = 0;
-	filt->stat.n = 0;
-
-	filt->avg = 0;
-	filt->len = 0;
-
-	filt->stat.variance = 0;
-	filt->stat.mean = 0;
-	filt->stat.n = 0;
+	__filt_clear(filt);
+	__filt_stat_clear(filt);
 
 	DBG("<%d> delay=%s precision=%s", chime_cpu_id(), 
 		FMT_CLK(peer_delay), FMT_CLK(peer_precision));
 }
 
-int64_t __variance(struct clock_filt * filt, float x)
-{
-	float delta;
 
-	filt->stat.n++;
-	delta = x - filt->stat.mean;
-	filt->stat.mean += delta / filt->stat.n;
-	filt->stat.m2 = delta * (x - filt->stat.mean);
-
-	filt->stat.variance = filt->stat.m2 / (filt->stat.n - 1);
-
-	return filt->stat.variance;
-}
-
-float __two_pass_variance(int32_t offs[], int n)
+float __variance(int32_t offs[], int n)
 {
 	float sum1 = 0;
 	float sum2 = 0;
@@ -98,14 +100,14 @@ float __two_pass_variance(int32_t offs[], int n)
 	int i;
 
 	for (i = 0; i < n; ++i) {
-		x = CLK_FLOAT(offs[i]);
+		x = Q31_FLOAT(offs[i]);
 		sum1 = sum1 + x;
 	}
 
 	mean = sum1 / n;
 
 	for (i = 0; i < n; ++i) {
-		x = CLK_FLOAT(offs[i]);
+		x = Q31_FLOAT(offs[i]);
 		sum2 = sum2 + (x - mean) * (x - mean);
 	}
 
@@ -131,49 +133,6 @@ float __online_variance(int64_t offs[], int len)
 	return m2 / (n - 1);
 }
 
-#define FILT_OFFS_MAX FLOAT_CLK(0.1000)
-
-uint32_t i64sqrt(uint64_t x)
-{
-	uint64_t rem = 0;
-	uint64_t root = 0;
-	int i;
-
-	for (i = 0; i < 32; ++i) {
-		root <<= 1;
-		rem = ((rem << 2) + (x >> 62));
-		x <<= 2;
-		root++;
-		if (root <= rem) {
-			rem -= root;
-			root++;
-		} else
-			root--;
-	}
-
-	return root >> 1;
-}	
-
-int32_t isqrt(uint32_t x)
-{
-	uint32_t rem = 0;
-	uint32_t root = 0;
-	int i;
-
-	for (i = 0; i < 16; ++i) {
-		root <<= 1;
-		rem = ((rem << 2) + (x >> 30));
-		x <<= 2;
-		root++;
-		if (root <= rem) {
-			rem -= root;
-			root++;
-		} else
-			root--;
-	}
-
-	return root >> 1;
-}	
 
 /* Called when a time packed is received from the network */
 int64_t filt_receive(struct clock_filt * filt, 
@@ -183,8 +142,7 @@ int64_t filt_receive(struct clock_filt * filt,
 	int64_t offs;
 	int64_t disp;
 	int64_t ret;
-	int32_t sigma = 0;
-	int i;
+	register int32_t dx = 0;
 
 	filt->peer.timestamp = remote;
 
@@ -194,84 +152,92 @@ int64_t filt_receive(struct clock_filt * filt,
 	disp = filt->precision + filt->peer.precision + CLOCK_PHI * delay;
 	(void)disp;
 
+	filt->offs = offs;
+
 	ret = offs;
-	if ((offs >= FILT_OFFS_MAX) || (offs <= -FILT_OFFS_MAX)) {
-		WARN("spike!!");
+
+	if ((offs > FILT_OFFS_MAX) || (offs < -FILT_OFFS_MAX)) {
+		if (filt->spike) {
+			/* if we are in the SPIKE detect state, and 
+			   the limits were excedded again, then step the clock. */
+			WARN("step!!");
+			filt->stat.step++;
+			__filt_clear(filt);
+		} else {
+			WARN("spike!!");
+			/* set the spike flag */
+			filt->spike = true;
+			/* do not update the clock */
+			ret = CLK_OFFS_INVALID;
+		}	
 	} else {
-		int32_t x1;
-		int32_t y1;
-		int64_t x2;
-		int64_t y2;
-		int64_t m;
-		int64_t v;
-		int n = filt->len;
+		register int32_t x1;
+		register int32_t x2;
+		register int32_t y1;
+		register int32_t y2;
+		register int64_t sx1;
+		register int32_t sx2;
+		register int32_t avg;
+		register int n;
+		register int i;
 
-		x1 = offs;
-		x2 = ((int64_t)x1 * (int64_t)x1) >> 32;
+		x1 = CLK_Q31(offs);
 
+		n = filt->len;
 		if (n < CLK_FILT_LEN) {
-			n++;
-			filt->len = n;
-			y1 = 0;
-		} else
-			y1 = filt->x[CLK_FILT_LEN - 1];
+			filt->len = ++n;
+		} else {
+			dx = x1 - filt->average;
+			if (Q31_MUL(dx, dx) > filt->variance * 4) {
+				/* do not update the clock */
+				ret = CLK_OFFS_INVALID;
+				chime_var_rec(filt_avg_var, 1.9);
+			}
+		}
 
-		y2 = ((int64_t)y1 * (int64_t)y1) >> 32;
-
+		y1 = filt->x[CLK_FILT_LEN - 1];
 		for (i = (CLK_FILT_LEN - 1); i > 0; --i)
 			filt->x[i] = filt->x[i - 1];
 		filt->x[0] = x1;
+		x2 = Q31_MUL(x1, x1); /* square */ 
+		y2 = Q31_MUL(y1, y1); /* square */ 
 
-		filt->sx1 += x1 - y1;
-		filt->sx2 += x2 - y2;
+		sx1 = filt->sx1;
+		sx1 += x1 - y1;
 
-		m = filt->sx1 / n;
-		if (n > 1)  
-			v = (n * filt->sx2 - ((filt->sx1 * filt->sx1) >> 32)) / 
-				(n * (n - 1));
-		else
-			v = 0;
+		sx2 = filt->sx2;
+		sx2 += x2 - y2;
 
-		filt->avg = m;
-		filt->stat.variance = CLK_FLOAT(v);
-		filt->stat.mean = CLK_FLOAT(m);
+		filt->sx1 = sx1;
+		filt->sx2 = sx2;
 
-		if (filt->len < CLK_FILT_LEN) {
-			/* Cumulative moving average */
-			filt->avg = (filt->avg * (n - 1) + x1) / n;
-			DBG1("C len=%d filt->avg=%s", filt->len, FMT_CLK(filt->avg));
+		if (n < CLK_FILT_LEN) {
+			filt->len = ++n;
+			avg = sx1 / n;
 		} else {
-
-			/* moving average */
-			filt->avg = filt->avg + (x1 - y1) / CLK_FILT_LEN;
-			DBG1("M len=%d filt->avg=%s old=%s", filt->len, FMT_CLK(filt->avg), 
-				FMT_CLK(y1));
+			register int32_t k = FLOAT_Q31(1.0 / (CLK_FILT_LEN - 1));
+			/* mean */
+			avg = sx1 / CLK_FILT_LEN;
+			/* variance */
+			/* v = (sx2 - (sx1**2) / n) / (n - 1); */
+			filt->variance = Q31_MUL((sx2 - Q31_MUL(avg, sx1)), k);
 		}
 
-//		filt->stat.variance = __online_variance(filt->offs, filt->len);
-		filt->stat.sigma = sqrt(CLK_FLOAT(v));
-
-		sigma = FLOAT_CLK(sqrt(CLK_FLOAT(v)) * 1.5);
-
-		if ((offs > sigma) || (offs < -sigma))
-			ret = INT64_MAX;
+		/* mean */
+		filt->average = avg;
 	}
 
-	filt->offs = offs;
-
-
-
-//		filt->stat.variance = 0;
-//		filt->stat.mean = offs;
-//		filt->stat.n = 1;
-
-//		filt->avg = offs;
-//		filt->len = 1;
-
-
-	chime_var_rec(filt_avg_var, CLK_FLOAT(filt->offs) + 1.85);
 //	chime_var_rec(filt_mean_var, filt->stat.mean + 1.85);
-	chime_var_rec(filt_mean_var, filt->stat.sigma+ 1.85);
+
+//	chime_var_rec(filt_offs_var, CLK_FLOAT(filt->offs) + 1.85);
+	chime_var_rec(filt_offs_var, Q31_FLOAT(dx) + 1.85);
+
+//	chime_var_rec(filt_avgs_var, Q31_FLOAT(filt->average) + 1.85);
+
+	chime_var_rec(filt_sigma_var, sqrt(Q31_FLOAT(filt->variance) * 3) + 1.85);
+
+//	chime_var_rec(filt_avg_var, sqrt(__variance(filt->x, CLK_FILT_LEN)) + 1.85);
+	chime_var_rec(filt_avg_var, CLK_FLOAT(filt->average) + 1.85);
 
 	/* FIXME: implement filtering */
 	DBG1("remote=%s local=%s offs=%s delay=%s", 

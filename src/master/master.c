@@ -52,20 +52,28 @@ int master_temp_var;
 #define ARCNET_COMM 0
 #define I2C_RTC_COMM 1
 
-#define SIM_POLL_JITTER_US 5
+#define SIM_POLL_JITTER_US 10000
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
 
 #define SIM_XTAL_OFFS_PPM 100
 #define SIM_XTAL_TC_PPM -0.05
 
-#define SIM_TIME_HOURS 3
+#define SIM_TIME_HOURS 6
+
+#define RTC_NOMINAL_POLL_FREQ_HZ 8
+#define RTC_POLL_SHIFT_PPM 250
+
+#define RTC_POLL_FREQ_HZ  (RTC_NOMINAL_POLL_FREQ_HZ + \
+						   0.000001 * RTC_POLL_SHIFT_PPM)
+
 
 /****************************************************************************
  * Local Clock
  ****************************************************************************/
 
-#define LOCAL_CLOCK_FREQ_HZ 9
+//#define LOCAL_CLOCK_FREQ_HZ RTC_POLL_FREQ_HZ 
+#define LOCAL_CLOCK_FREQ_HZ 9.005
 
 static struct clock local_clock;
 
@@ -79,7 +87,8 @@ void local_clock_tmr_isr(void)
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, LOCAL_CLOCK_FREQ_HZ, LOCAL_CLOCK_TMR);
+	clock_init(&local_clock, FLOAT_Q31(1.0 / LOCAL_CLOCK_FREQ_HZ), 
+			   LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
 		unsigned int period_us;
@@ -90,14 +99,12 @@ void local_clock_init(void)
 					   period_us, period_us);
 	}
 }
-
 /****************************************************************************
  * RTC
  ****************************************************************************/
 
-#define RTC_POLL_FREQ_HZ 8
-#define RTC_POLL_SHIFT_PPM 250
-#define FLL_ERR_MAX FLOAT_CLK(2.0 / RTC_POLL_FREQ_HZ)
+#define FLL_ERR_MAX FLOAT_CLK(2.0 / RTC_NOMINAL_POLL_FREQ_HZ)
+
 
 struct rtc_clock {
 	uint64_t ts;
@@ -109,7 +116,7 @@ struct rtc_clock rtc_clk;
 
 struct clock_fll fll;
 
-#define RTC_OFFS_MAX FLOAT_CLK(2.0 / RTC_POLL_FREQ_HZ)
+#define RTC_OFFS_MAX FLOAT_CLK(2.0 / RTC_NOMINAL_POLL_FREQ_HZ)
 
 /* This function simulates the polling of the RTC. 
    It should be called at RTC_POLL_FREQ_HZ frequency. */
@@ -170,7 +177,7 @@ void rtc_clock_init(void)
 	   This will force a seconds update on the first round. */
 	rtc_clk.sec = -1; 
 	rtc_clk.ts = 0;
-	rtc_clk.period = FLOAT_CLK(1.0 / RTC_POLL_FREQ_HZ);
+	rtc_clk.period = FLOAT_CLK(1.0 / RTC_NOMINAL_POLL_FREQ_HZ);
 
 	/* Initialize the FLL.
 	   Connect the local clock to the FLL discipline. */
@@ -187,7 +194,7 @@ void rtc_clock_init(void)
 		   RTC_SHIFT_PPM is used to force the timer poll roling..
 		   This is necessary to detect edges, allowing the FLL to converge.
 		 */
-		itv_us = (1000000 + RTC_POLL_SHIFT_PPM) / RTC_POLL_FREQ_HZ;
+		itv_us = 1000000 / RTC_POLL_FREQ_HZ;
 		chime_tmr_init(RTC_POLL_TMR, rtc_poll_tmr_isr, itv_us, itv_us);
 
 		rtc_clk_var = chime_var_open("rtc_clk");
@@ -195,6 +202,7 @@ void rtc_clock_init(void)
 		//	rtc_syn_var = chime_var_open("rtc_syn");
 	}
 }
+
 
 /****************************************************************************
  * Main CPU simulation
@@ -207,8 +215,10 @@ static __thread float sim_temperature;
 static __thread float sim_temp_rate;
 static __thread bool net_disabled;
 
-#define SIM_NET_PAUSE1  (int)(SIM_TIME_MINUTES * 0.5)
-#define SIM_NET_RESUME1 (int)(SIM_TIME_MINUTES * 0.75)
+#define SIM_NET_PAUSE1  (int)(SIM_TIME_MINUTES * 0.75)
+#define SIM_NET_RESUME1 (int)(SIM_NET_PAUSE1 + 15)
+#define SIM_NET_PAUSE2  (int)(SIM_NET_RESUME1 + 15)
+#define SIM_NET_RESUME2 (int)(SIM_NET_PAUSE2 + 15)
 
 void sim_timer_isr(void)
 {
@@ -221,12 +231,14 @@ void sim_timer_isr(void)
 
 	switch (sim_minutes) {
 	case SIM_NET_PAUSE1:
+	case SIM_NET_PAUSE2:
 		tracef(T_INF, "Network paused.");
-//		net_disabled = true;
+		net_disabled = true;
 		break;
 	case SIM_NET_RESUME1:
+	case SIM_NET_RESUME2:
 		tracef(T_INF, "Network resumed.");
-//		net_disabled = false;
+		net_disabled = false;
 		break;
 	}
 

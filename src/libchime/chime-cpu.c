@@ -322,7 +322,7 @@ static void __cpu_event_wait(void)
 again:
 
 	if ((len = __mq_recv(cpu.rcv_mq, evt, CHIME_EVENT_LEN)) < 0) {
-		ERR("__mq_recv() failed: %s!", __strerr());
+		DBG1("__mq_recv() failed: %s!", __strerr());
 		__cpu_except(EXCEPT_MQ_RECV);
 	}
 
@@ -428,7 +428,7 @@ int __cpu_sim_loop(struct chime_node * node)
 		}
 	}
 
-	DBG("RIP. <%d> died with code %d.", cpu.node_id, code);
+	DBG1("RIP. <%d> died with code %d.", cpu.node_id, code);
 
 	/* notify server */
 	req.hdr.node_id = cpu.node_id;
