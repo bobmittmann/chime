@@ -57,14 +57,14 @@ int master_temp_var;
 #define SIM_TEMP_MAX 70
 
 #define SIM_XTAL_OFFS_PPM -100
-#define SIM_XTAL_TC_PPM -0.05
+#define SIM_XTAL_TC_PPM -0.050
 //#define SIM_XTAL_OFFS_PPM 0
 //#define SIM_XTAL_TC_PPM 0
 
 #define SIM_TIME_HOURS 12
 
 #define RTC_NOMINAL_POLL_FREQ_HZ 8
-#define RTC_POLL_SHIFT_PPM 300
+#define RTC_POLL_SHIFT_PPM 250
 
 #define RTC_POLL_FREQ_HZ  (RTC_NOMINAL_POLL_FREQ_HZ *  \
 						   (1.0 - 0.000001 * RTC_POLL_SHIFT_PPM))

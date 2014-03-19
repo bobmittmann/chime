@@ -26,23 +26,11 @@
 #include "synclk.h"
 #include "chime.h"
 
-__thread int pll_offs_var;
-__thread int pll_err_var;
-__thread int de_var;
-
 #ifndef ENABLE_PLL_LOW_PASS
 #define ENABLE_PLL_LOW_PASS 1
 #endif
 
 #define PLL_OFFS_MAX FLOAT_CLK(0.0625)
-
-
-//#define PLL_B 0.5
-//#define PLL_A 0
-
-/* FC = 0.001953Hz, 512 sec */
-
-/* FC= 0.000977Hz, 1024 sec */
 
 #if 1
 /* Bessel
@@ -103,56 +91,6 @@ __thread int de_var;
 #define PLL_B2 FLOAT_Q31(0.0022516/PLL_A0)
 #endif
 
-#if 0
-/* Bessel */
-#define PLL_A0 1
-#define PLL_A1 FLOAT_Q31(-0.87716188653003324000/PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.24043188698736320000/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.09081750013497327800/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.18163500026994656000/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.09081750013497327800/PLL_A0)
-#endif
-
-#if 0
-#define PLL_A0 1
-#define PLL_A1 FLOAT_Q31(-0.98657618056564034/PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.44681268983470201/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.11505882726663068/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.23011765453326136/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.11505882726663068/PLL_A0)
-#endif
-
-#if 0
-#define PLL_A0 1
-#define PLL_A1 FLOAT_Q31(-1.00000/PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.57406/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.029955/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.059909/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.029955/PLL_A0)
-#endif
-/*
-#define PLL_A0 2
-#define PLL_A1 FLOAT_Q31(-1.45424/PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.57406/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.029955/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.059909/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.029955/PLL_A0)
-
-#define PLL_A0 1
-#define PLL_A1 FLOAT_Q31(-0.94281/PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.33333/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.097631/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.195262/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.097631/PLL_A0)
-
-#define PLL_A0 1
-#define PLL_A1 FLOAT_Q31(-0./PLL_A0)
-#define PLL_A2 FLOAT_Q31(0.17157/PLL_A0)
-#define PLL_B0 FLOAT_Q31(0.29289/PLL_A0)
-#define PLL_B1 FLOAT_Q31(0.58579/PLL_A0)
-#define PLL_B2 FLOAT_Q31(0.29289/PLL_A0)
-*/
-
 #if ENABLE_PLL_LOW_PASS
 static int32_t iir_apply(int32_t x[], int32_t y[], int32_t v) 
 {
@@ -164,8 +102,8 @@ static int32_t iir_apply(int32_t x[], int32_t y[], int32_t v)
 	y[0] = Q31_MUL(PLL_B, x[0] + x[1]) - Q31_MUL(PLL_A, y[1]);
 	return y[0];
 }
-#endif
 
+#if ENABLE_PLL_LOW_PASS2
 int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 {
 	int64_t y0;
@@ -185,59 +123,57 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 
 	return y[0];
 }
+#endif
+#endif
+
+static void __pll_clear(struct clock_pll  * pll)
+{
+	int i;
+
+	pll->lock = false;
+	pll->drift = 0;
+	pll->offs = 0;
+	pll->ref = 0;
+
+#if ENABLE_PLL_LOW_PASS
+	/* IIR order filer */
+	for (i = 0; i < sizeof(pll->iir.x) / sizeof(int32_t); ++i) {
+		pll->iir.x[i] = 0;
+		pll->iir.y[i] = 0;
+	}
+#endif
+}
+
+static void __pll_stat_clear(struct clock_pll  * pll)
+{
+	pll->stat.step_cnt = 0;
+}
+
+__thread int pll_offs_var;
+__thread int pll_err_var;
+__thread int de_var;
 
 #define PLL_KD 4
 #define PLL_KP 8
 #define PLL_KI 512
 
-#if 0
 void pll_step(struct clock_pll  * pll)
 {
 	int32_t ierr;
 	int32_t err;
 
 	pll->ref = pll->ref - pll->ref / PLL_KD;
-	err = CLK_Q31(pll->offs - pll->ref);
-
-	pll->err = err;
-	
-	err /= PLL_KP;
-
-	/* integral term */
-	ierr = pll->ierr + err / PLL_KI;
-	pll->ierr = ierr;
-
-	pll->drift = clock_drift_comp(pll->clk, ierr + err, err);
-	pll->offs -= Q31_CLK(err);
-	
-	chime_var_rec(pll_offs_var, CLK_FLOAT(pll->offs) + 1.7);
-	chime_var_rec(pll_err_var, CLK_FLOAT(pll->err) + 1.65);
-
-	return;
-}
-#endif
-
-void pll_step(struct clock_pll  * pll)
-{
-	int32_t ierr;
-	int32_t err;
-
-	pll->ref = pll->ref - pll->ref / PLL_KD;
-	err = pll->offs - pll->ref;
-
-	pll->err = err;
-	
-	err /= PLL_KP;
+	err = (pll->offs - pll->ref) / PLL_KP;
+	pll->offs -= err;
 
 	/* integral term */
 	ierr = pll->ierr + err / PLL_KI;
 	pll->ierr = ierr;
 
 	pll->drift = clock_drift_comp(ierr + err, err);
-	pll->offs -= err;
-	
+
 	chime_var_rec(pll_offs_var, Q31_FLOAT(pll->offs) + 1.7);
-	chime_var_rec(pll_err_var, Q31_FLOAT(pll->err) + 1.65);
+	chime_var_rec(pll_err_var, Q31_FLOAT(err) + 1.65);
 
 	return;
 }
@@ -250,19 +186,21 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 
 	if ((offs >= PLL_OFFS_MAX) || (offs <= -PLL_OFFS_MAX)) {
 		WARN("clock_step()!!");
-		/* force clock to reference */
-		clock_step(offs);
 		pll->offs = 0;
 		pll->ref = 0;
+		/* force clock to reference */
+		clock_step(offs);
+		/* update statistics */
+		pll->stat.step_cnt++;
 		return;
 	}
 
 	pll->itvl = itvl;
 
 	x = CLK_Q31(offs);
-//	x = iir2_apply(pll->f1.x, pll->f1.y, offs);
 #if ENABLE_PLL_LOW_PASS
-	x = iir_apply(pll->f0.x, pll->f0.y, x);
+	x = iir_apply(pll->iir.x, pll->iir.y, x);
+//	x = iir2_apply(pll->iir.x, pll->iir.y, offs);
 #endif
 	pll->offs = x;
 	pll->ref = x;
@@ -274,36 +212,14 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 
 void pll_reset(struct clock_pll  * pll)
 {
-	int i;
-
-	pll->run = false;
-	pll->lock = false;
-	pll->drift = 0;
-	pll->offs = 0;
-	pll->err = 0;
-	pll->ref = 0;
-
-	/* IIR order filer */
-	for (i = 0; i < sizeof(pll->f0.x) / sizeof(int32_t); ++i) {
-		pll->f0.x[i] = 0;
-		pll->f0.y[i] = 0;
-	}
-
-	for (i = 0; i < sizeof(pll->f1.x) / sizeof(int32_t); ++i) {
-		pll->f1.x[i] = 0;
-		pll->f1.y[i] = 0;
-	}
-
+	__pll_clear(pll);
 }
 
 void pll_init(struct clock_pll  * pll)
 {
-	pll->run = false;
-	pll->lock = false;
-	pll->drift = 0;
-	pll->offs = 0;
-	pll->err = 0;
-	pll->ref = 0;
+
+	__pll_clear(pll);
+	__pll_stat_clear(pll);
 
 	/* open a simulation variable recorder */
 	pll_offs_var = chime_var_open("pll_offs");

@@ -45,6 +45,27 @@ int fll_win_var;
 int fll_phi_var;
 int fll_err_var;
 
+static void __fll_clear(struct clock_fll  * fll)
+{
+	fll->run = false;
+	fll->lock = false;
+	fll->clk_drift = 0;
+	fll->clk_err[0] = 0;
+	fll->clk_err[1] = 0;
+	fll->clk_acc = 0;
+	fll->drift_err = 0;
+	fll->edge_offs = 0;
+	fll->edge_filt = 0;
+	fll->edge_jit  = 0;
+}
+
+static void __fll_stat_clear(struct clock_fll  * fll)
+{
+	fll->stat.step_cnt = 0;
+	fll->stat.jit_avg = 0;
+	fll->stat.jit_max = 0;
+}
+
 /* FLL algorithm.
    It will adjust the frequency of the local clock to a reference clock... */
 void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
@@ -68,7 +89,8 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		   stop the FLL!!! */
 		if ((err > fll->err_max) || (err < -fll->err_max)) {
 			ERR("FLL error diff=%s ", FMT_CLK(err));
-			fll->clk_err = err;
+			fll->clk_err[1] = err;
+			fll->clk_err[0] = err;
 			/* reset the edge filter */
 			fll->edge_filt = 0;
 			fll->edge_jit  = 0;
@@ -77,7 +99,10 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 				DBG("FLL (t=%d) unlocked at %s!", 
 					CLK_SEC(ref_ts), FMT_CLK(ref_ts));
 			}
+			/* step the clock */
 			clock_step(err);
+			/* update statistics */
+			fll->stat.step_cnt++;
 			break;
 		}
 
@@ -87,7 +112,6 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 				/* extend the window */
 				fll->edge_jit += FLL_EDGE_FILTER_WIN_MIN - fll->edge_filt;
 				fll->edge_filt = FLL_EDGE_FILTER_WIN_MIN; 
-	//			chime_var_rec(rtc_time_var, 1.6);
 				break;
 			}
 			if (--fll->edge_filt == 0) {
@@ -110,6 +134,12 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		chime_var_rec(fll_win_var, 1.6);
 		chime_var_rec(fll_win_var, 1.65);
 
+		/* update statistics */
+		if (fll->edge_jit > fll->stat.jit_max)
+			fll->stat.jit_max = fll->edge_jit;
+		/* exponential moving average */
+		fll->stat.jit_avg = (15 * fll->stat.jit_avg + fll->edge_jit) / 16;
+
 		/* Enable edge filter window to avoid detecting 
 		   a second transition right after the first one. */
 		fll->edge_filt = FLL_EDGE_FILTER_WIN_MIN;
@@ -117,8 +147,8 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 		/* set the residual error to to be compensated by stepping
 		 the local clock. */
-		fll->clk_err = CLK_Q31(err);
-		fll->clk_phi = CLK_Q31(err);
+		fll->clk_err[0] = CLK_Q31(err);
+		fll->clk_err[1] = CLK_Q31(err);
 
 		if (!fll->run) {
 			DBG1("err=%s offs=%s", FMT_CLK(err), FMT_CLK(offs));
@@ -178,7 +208,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		/* update the drift error */
 		fll->drift_err = e_drift;
 		/* adjust the clock */
-		fll->clk_drift = clock_drift_comp(drift, fll->clk_err);
+		fll->clk_drift = clock_drift_comp(drift, fll->clk_err[1]);
 
 		DBG5("FLL freq=%.9f e_drift=%.9f d_drift=%.9f drift=%.9f ", 
 			freq, Q31_FLOAT(e_drift), Q31_FLOAT(d_drift), 
@@ -186,57 +216,37 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 	} while (0);
 
-	if (fll->clk_err) {
+	if (fll->clk_err[1]) {
 		/* exponential amortization for the phase error */
 		int32_t de;
 		int32_t drift;
-#if 0
-		err = fll->clk_err / 128;
-		if (err) {
-			fll->clk_err -= err;
-			clock_step(err);
-		}
-#endif
-		fll->clk_phi = fll->clk_phi - fll->clk_phi / FLL_KD;
-		de = (fll->clk_err - fll->clk_phi) / FLL_KP;
+
+		fll->clk_err[0] = fll->clk_err[0] - fll->clk_err[0] / FLL_KD;
+		de = (fll->clk_err[1] - fll->clk_err[0]) / FLL_KP;
 		/* adjust the clock */
-		drift = clock_drift_comp(fll->clk_drift + de, fll->clk_err);
+		drift = clock_drift_comp(fll->clk_drift + de, fll->clk_err[1]);
 		de = drift - fll->clk_drift;
-		fll->clk_err -= de;
+		fll->clk_err[1] -= de;
 		fll->clk_acc += de;
 	
-		chime_var_rec(fll_phi_var, Q31_FLOAT(fll->clk_phi) + 1.4);
+		chime_var_rec(fll_phi_var, Q31_FLOAT(fll->clk_err[1]) + 1.4);
 		chime_var_rec(fll_err_var, Q31_FLOAT(de) * 1000 + 1.5);
 	}
 }
 
 void fll_reset(struct clock_fll  * fll, uint64_t ref_ts)
 {
-	fll->run = false;
-	fll->clk_drift = 0;
-	fll->clk_err = 0;
-	fll->clk_acc = 0;
-	fll->drift_err = 0;
-	fll->edge_offs = 0;
-	fll->edge_filt = 0;
-	fll->edge_jit  = 0;
+	__fll_clear(fll);
 	/* force clock to reference */
 	clock_time_set(ref_ts);
-
 }
 
 void fll_init(struct clock_fll  * fll, int64_t err_max)
 {
 	fll->err_max = err_max;
-	fll->run = false;
-	fll->lock = false;
-	fll->clk_drift = 0;
-	fll->clk_err = 0;
-	fll->clk_acc = 0;
-	fll->drift_err = 0;
-	fll->edge_offs = 0;
-	fll->edge_filt = 0;
-	fll->edge_jit  = 0;
+	__fll_clear(fll);
+	__fll_stat_clear(fll);
+
 	{ /* XXX: simulation only!! */
 		fll_win_var = chime_var_open("fll_win");
 		fll_phi_var = chime_var_open("fll_phi");

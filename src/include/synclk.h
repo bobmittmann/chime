@@ -12,19 +12,24 @@
  */
 
 struct clock_fll {
-	int32_t clk_err;
-	int32_t clk_phi; /* phase error */
-	int32_t clk_acc; /* phase error */
+	int32_t clk_err[2]; /* phase error */
+	int32_t clk_acc; /* phase compensation accoumulator */
 	int32_t clk_drift;
-	int32_t drift_err;
-	uint64_t ref_ts;
 	uint64_t clk_ts;
-	int32_t err_max;
+	uint64_t ref_ts;
+	int32_t drift_err;
+	int64_t err_max;
 	int32_t edge_offs;
 	uint32_t edge_filt;
 	uint32_t edge_jit;
 	bool lock;
 	bool run;
+
+	struct {
+		uint32_t step_cnt;
+		uint32_t jit_max;
+		uint32_t jit_avg;
+	} stat;
 };
 
 /* 
@@ -32,7 +37,6 @@ struct clock_fll {
  */
 
 struct clock_pll {
-	int32_t clk_err;
 	int32_t drift;
 	int32_t err;
 	int32_t ref;
@@ -40,15 +44,15 @@ struct clock_pll {
 	int32_t ierr;
 	int64_t itvl; /* interval between the last two samples */
 	bool lock;
-	bool run;
+
 	struct {
 		int32_t x[4];
 		int32_t y[4];
-	} f0;
+	} iir;
+
 	struct {
-		int32_t x[4];
-		int32_t y[4];
-	} f1;
+		uint32_t step_cnt;
+	} stat;
 };
 
 
@@ -57,7 +61,7 @@ struct clock_pll {
  */
 
 #define CLK_OFFS_INVALID INT64_MIN
-#define CLK_FILT_LEN 32
+#define CLK_FILT_LEN 16
 
 struct clock_filt {
 	struct clock  * clk;
