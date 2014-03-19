@@ -37,9 +37,13 @@
 /* Initial frequency calculation window (seconds) */
 #define FLL_FREQ_CALC_MIN_WIN 600
 
+#define FLL_KP 128 /* Attack gain */
+#define FLL_KD 256 /* Decay gain */
 /* 
 XXX: simulation; */
 int fll_win_var;
+int fll_phi_var;
+int fll_err_var;
 
 /* FLL algorithm.
    It will adjust the frequency of the local clock to a reference clock... */
@@ -58,7 +62,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 	do {
 		/* compute the error between reference time and local clocks */
-		err = ref_ts - clock_time_get(fll->clk);
+		err = ref_ts - clock_realtime_get();
 
 		/* Sanity check. If we are off by too much, 
 		   stop the FLL!!! */
@@ -73,6 +77,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 				DBG("FLL (t=%d) unlocked at %s!", 
 					CLK_SEC(ref_ts), FMT_CLK(ref_ts));
 			}
+			clock_step(err);
 			break;
 		}
 
@@ -82,19 +87,16 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 				/* extend the window */
 				fll->edge_jit += FLL_EDGE_FILTER_WIN_MIN - fll->edge_filt;
 				fll->edge_filt = FLL_EDGE_FILTER_WIN_MIN; 
-	//			chime_var_rec(rtc_time_var, 1.4);
+	//			chime_var_rec(rtc_time_var, 1.6);
 				break;
 			}
 			if (--fll->edge_filt == 0) {
-				chime_var_rec(fll_win_var, 1.5);
-				chime_var_rec(fll_win_var, 1.4);
-				INF("FLL edge jitter: %d [secs]", fll->edge_jit);
+				chime_var_rec(fll_win_var, 1.65);
+				chime_var_rec(fll_win_var, 1.6);
+				DBG1("FLL edge jitter: %d [secs]", fll->edge_jit);
 			}
 			break;
 		} 
-
-		if (offs < 0)
-			break;
 
 		/* As the clock rate is slower than the RTC clock
 		   RTC_rate = 1 sec/sec (assumed to be corrrect)
@@ -105,8 +107,8 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		if (offs <= 0)
 			break;
 
-		chime_var_rec(fll_win_var, 1.4);
-		chime_var_rec(fll_win_var, 1.5);
+		chime_var_rec(fll_win_var, 1.6);
+		chime_var_rec(fll_win_var, 1.65);
 
 		/* Enable edge filter window to avoid detecting 
 		   a second transition right after the first one. */
@@ -115,7 +117,8 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 		/* set the residual error to to be compensated by stepping
 		 the local clock. */
-		fll->clk_err = err;
+		fll->clk_err = CLK_Q31(err);
+		fll->clk_phi = CLK_Q31(err);
 
 		if (!fll->run) {
 			DBG1("err=%s offs=%s", FMT_CLK(err), FMT_CLK(offs));
@@ -123,10 +126,11 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 			/* save the RTC timetamps */
 			fll->ref_ts = ref_ts;
 			/* save the raw local clock (no offset) */
-			fll->clk_ts = clock_timestamp(fll->clk);
+			fll->clk_ts = clock_monotonic_get();
 			/* save the edge polarity */
 			fll->edge_offs = offs;
-
+			/* resset the clk accumulator */
+			fll->clk_acc = 0;
 			/* make sure the lock falg is clear */
 			fll->lock = false;
 			/* change the state to RUN! */
@@ -137,7 +141,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		} 
 
 		/* get raw local clock (no offset) */
-		clk_dt = clock_timestamp(fll->clk) - fll->clk_ts;
+		clk_dt = clock_monotonic_get() - fll->clk_ts;
 
 		if (!fll->lock) {
 			/* minimum window for initial frequency adjustment */
@@ -149,21 +153,24 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 		rtc_dt = ref_ts - fll->ref_ts;
 
-		dy = CLK_FLOAT(clk_dt);
+		dy = CLK_FLOAT(clk_dt) - Q31_FLOAT(fll->clk_acc);
 		dx = CLK_FLOAT(rtc_dt);
 
+		DBG("t=%5d dx=%9.4f dy=%9.4f acc=%8.5f err=%8.5f", 
+			CLK_SEC(ref_ts), dx, dy, Q31_FLOAT(fll->clk_acc), CLK_FLOAT(err));
+
+		/* reset accumulator */
+		fll->clk_acc = 0;
+
 		freq = dy / dx;
-
-		DBG4("FLL err=%s offs=%s dy=%.6f dx=%.6f", 
-			 FMT_CLK(err), FMT_CLK(offs), dy, dx);
-
-		DBG1("FLL (t=%d) dx=%.1f err=%s drift=%0.9f", 
-			CLK_SEC(ref_ts), dx, FMT_CLK(err), Q31_FLOAT(fll->clk_drift));
 
 		e_drift = FLOAT_Q31(1.0 - freq);
 		d_drift = FLOAT_Q31(Q31_FLOAT(fll->drift_err - e_drift) / dx);
 		drift = fll->clk_drift + e_drift + 16 * d_drift;
 		// drift = (2 * fll->clk_drift + e_drift + 32 * d_drift) / 2;
+
+		DBG1("FLL (t=%d) dx=%.1f err=%s drift=%0.9f", 
+			CLK_SEC(ref_ts), dx, FMT_CLK(err), Q31_FLOAT(fll->clk_drift));
 
 		/* update the timetamps for next round */
 		fll->clk_ts += clk_dt;
@@ -171,7 +178,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 		/* update the drift error */
 		fll->drift_err = e_drift;
 		/* adjust the clock */
-		fll->clk_drift = clock_drift_comp(fll->clk, drift, fll->clk_err);
+		fll->clk_drift = clock_drift_comp(drift, fll->clk_err);
 
 		DBG5("FLL freq=%.9f e_drift=%.9f d_drift=%.9f drift=%.9f ", 
 			freq, Q31_FLOAT(e_drift), Q31_FLOAT(d_drift), 
@@ -180,13 +187,26 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 	} while (0);
 
 	if (fll->clk_err) {
-		int32_t e;
-		/* exponential amortization for the local clock error */
-		e = fll->clk_err / 128;
-		if (e) {
-			fll->clk_err -= e;
-			clock_step(fll->clk, e);
+		/* exponential amortization for the phase error */
+		int32_t de;
+		int32_t drift;
+#if 0
+		err = fll->clk_err / 128;
+		if (err) {
+			fll->clk_err -= err;
+			clock_step(err);
 		}
+#endif
+		fll->clk_phi = fll->clk_phi - fll->clk_phi / FLL_KD;
+		de = (fll->clk_err - fll->clk_phi) / FLL_KP;
+		/* adjust the clock */
+		drift = clock_drift_comp(fll->clk_drift + de, fll->clk_err);
+		de = drift - fll->clk_drift;
+		fll->clk_err -= de;
+		fll->clk_acc += de;
+	
+		chime_var_rec(fll_phi_var, Q31_FLOAT(fll->clk_phi) + 1.4);
+		chime_var_rec(fll_err_var, Q31_FLOAT(de) * 1000 + 1.5);
 	}
 }
 
@@ -195,30 +215,33 @@ void fll_reset(struct clock_fll  * fll, uint64_t ref_ts)
 	fll->run = false;
 	fll->clk_drift = 0;
 	fll->clk_err = 0;
+	fll->clk_acc = 0;
 	fll->drift_err = 0;
 	fll->edge_offs = 0;
 	fll->edge_filt = 0;
 	fll->edge_jit  = 0;
 	/* force clock to reference */
-	clock_time_set(fll->clk, ref_ts);
+	clock_time_set(ref_ts);
 
 }
 
-void fll_init(struct clock_fll  * fll, struct clock  * clk, int64_t err_max)
+void fll_init(struct clock_fll  * fll, int64_t err_max)
 {
-	fll->clk = clk;
 	fll->err_max = err_max;
 	fll->run = false;
 	fll->lock = false;
 	fll->clk_drift = 0;
 	fll->clk_err = 0;
+	fll->clk_acc = 0;
 	fll->drift_err = 0;
 	fll->edge_offs = 0;
 	fll->edge_filt = 0;
 	fll->edge_jit  = 0;
 	{ /* XXX: simulation only!! */
 		fll_win_var = chime_var_open("fll_win");
-		chime_var_rec(fll_win_var, 1.4);
+		fll_phi_var = chime_var_open("fll_phi");
+		fll_err_var = chime_var_open("fll_err");
+		chime_var_rec(fll_win_var, 1.6);
 	}
 }
 

@@ -29,58 +29,6 @@
  * utility functions 
  ****************************************************************************/
 
-/* format a clock timestamp, mircosseconds resolution  */
-char * fmt_clk_opt(char * s, int64_t ts, int opt)
-{
-	bool neg = false;
-	int32_t sec;
-	int32_t us;
-	int32_t min;
-	int32_t hour;
-	int32_t days;
-
-	if (ts < 0) {
-		/* negative timestamp. Get the absolute value and store the tsignal */
-		neg = true;
-		ts = -ts;
-	}
-
-	us = ((ts & 0xffffffffLL) * 1000000 + (1LL << 31)) >> 32;
-	sec = ts >> 32;
-	min = sec / 60;
-	sec -= min * 60;
-	hour = min / 60;
-	min -= hour * 60;
-	days = hour / 24;
-	hour -= days * 24;
-
-	switch (opt) {
-	case FMT_H:
-		if (neg)
-			hour = -hour;
-		sprintf(s, "%3d:%02d:%02d.%03d", hour, min, sec, us / 1000);
-		break;
-	case FMT_M:
-		if (neg)
-			min = -min;
-		sprintf(s, "%02d:%02d.%03d", min, sec, us / 1000);
-		break;
-	case FMT_S:
-		if (neg)
-			sec = -sec;
-		sprintf(s, "%02d.%06d", sec, us);
-		break;
-	default:
-		if (neg)
-			sprintf(s, "-.%06d", us);
-		else
-			sprintf(s, ".%06d", us);
-		break;
-	}
-
-	return s;
-}
-
 char * fmt_clk(char * s, int64_t ts)
 {
 	bool neg = false;

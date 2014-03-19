@@ -61,7 +61,7 @@ int master_temp_var;
 //#define SIM_XTAL_OFFS_PPM 0
 //#define SIM_XTAL_TC_PPM 0
 
-#define SIM_TIME_HOURS 6
+#define SIM_TIME_HOURS 12
 
 #define RTC_NOMINAL_POLL_FREQ_HZ 8
 #define RTC_POLL_SHIFT_PPM 300
@@ -77,20 +77,17 @@ int master_temp_var;
 #define LOCAL_CLOCK_FREQ_HZ RTC_POLL_FREQ_HZ 
 //#define LOCAL_CLOCK_FREQ_HZ 10
 
-static struct clock local_clock;
-
 /* Clock timeer interrupt handler */
 void local_clock_tmr_isr(void)
 {
-	if (clock_tick(&local_clock))
+	if (clock_tick())
 		pps_flag = true;
 }
 
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), 
-			   LOCAL_CLOCK_TMR);
+	clock_init(FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
 		unsigned int period_us;
@@ -183,7 +180,7 @@ void rtc_clock_init(void)
 
 	/* Initialize the FLL.
 	   Connect the local clock to the FLL discipline. */
-	fll_init(&fll, &local_clock, FLL_ERR_MAX);
+	fll_init(&fll, FLL_ERR_MAX);
 
 
 	{ /* XXX: simulation only!! */
@@ -320,7 +317,7 @@ void cpu_master(void)
 #endif
 
     /* XXX: simulation. Set the initial clock offset */
-	clock_step(&local_clock, FLOAT_CLK(+1.6));
+	clock_step(FLOAT_CLK(+1.6));
 
 	pkt.sequence = 0;
 
@@ -331,7 +328,7 @@ void cpu_master(void)
 		if (pps_flag) { 
 			pps_flag = false;
 
-			local = clock_time_get(&local_clock);
+			local = clock_realtime_get();
 			chime_var_rec(master_clk_var, CLK_DOUBLE(local) - 
 						  chime_cpu_time());
 

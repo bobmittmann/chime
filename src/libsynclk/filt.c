@@ -56,10 +56,9 @@ static void __filt_stat_clear(struct clock_filt * filt)
 	filt->stat.drop = 0;
 }
 
-void filt_init(struct clock_filt * filt, struct clock  * clk)
+void filt_init(struct clock_filt * filt, uint32_t precision)
 {
-	filt->clk = clk; 
-	filt->precision = clk->resolution; 
+	filt->precision = precision; 
 
 	filt->peer.delay = 0;
 	filt->peer.precision = 0;

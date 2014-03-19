@@ -50,8 +50,8 @@ int slave_temp_var;
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
 
-#define SIM_TIME_HOURS 6
-#define SIM_DUMMY_NETWORK_NODES 15
+#define SIM_TIME_HOURS 12
+#define SIM_DUMMY_NETWORK_NODES 61
 
 /****************************************************************************
  * Local Clock
@@ -59,20 +59,17 @@ int slave_temp_var;
 
 #define LOCAL_CLOCK_FREQ_HZ 8
 
-static struct clock local_clock;
-
 /* Clock timeer interrupt handler */
 void local_clock_tmr_isr(void)
 {
-	if (clock_tick(&local_clock))
+	if (clock_tick())
 		pps_flag = true;
 }
 
 void local_clock_init(void)
 {
 	/* initialize the clock structure */
-	clock_init(&local_clock, FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), 
-			   LOCAL_CLOCK_TMR);
+	clock_init(FLOAT_CLK(1.0 / LOCAL_CLOCK_FREQ_HZ), LOCAL_CLOCK_TMR);
 
 	{ /* XXX: simultaion */
 		unsigned int period_us;
@@ -153,14 +150,14 @@ void cpu_slave(void)
 	slave_clk_var = chime_var_open("slave_clk");
 
 	/* initialize clock synchronization */
-	filt_init(&filt, &local_clock);
-	pll_init(&pll, &local_clock);
+	filt_init(&filt, FLOAT_CLK(0.001));
+	pll_init(&pll);
 	
 	/* initialize local clock */
 	local_clock_init();
 
 	/* XXX: simulation. Set the initial clock offset */
-	clock_step(&local_clock, FLOAT_CLK(1.00));
+	clock_step(FLOAT_CLK(1.00));
 
 	arcnet_pkt_rcvd = false;
 	for (;;) {
@@ -174,7 +171,7 @@ void cpu_slave(void)
 
 			pps_flag = false;
 
-			ts = clock_time_get(&local_clock);
+			ts = clock_realtime_get();
 			chime_var_rec(slave_clk_var, CLK_DOUBLE(ts) - chime_cpu_time());
 
 			pll_step(&pll);
@@ -206,7 +203,7 @@ void cpu_slave(void)
 
 			itvl = (int64_t)(pkt.timestamp - remote_ts); 
 			remote_ts = pkt.timestamp;
-			local_ts = clock_time_get(&local_clock);
+			local_ts = clock_realtime_get();
 
 			offs = filt_receive(&filt, remote_ts, local_ts);
 			if (offs != CLK_OFFS_INVALID) {

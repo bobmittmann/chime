@@ -186,7 +186,7 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 	return y[0];
 }
 
-#define PLL_KD 2
+#define PLL_KD 4
 #define PLL_KP 8
 #define PLL_KI 512
 
@@ -233,7 +233,7 @@ void pll_step(struct clock_pll  * pll)
 	ierr = pll->ierr + err / PLL_KI;
 	pll->ierr = ierr;
 
-	pll->drift = clock_drift_comp(pll->clk, ierr + err, err);
+	pll->drift = clock_drift_comp(ierr + err, err);
 	pll->offs -= err;
 	
 	chime_var_rec(pll_offs_var, Q31_FLOAT(pll->offs) + 1.7);
@@ -251,7 +251,7 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 	if ((offs >= PLL_OFFS_MAX) || (offs <= -PLL_OFFS_MAX)) {
 		WARN("clock_step()!!");
 		/* force clock to reference */
-		clock_step(pll->clk, offs);
+		clock_step(offs);
 		pll->offs = 0;
 		pll->ref = 0;
 		return;
@@ -296,9 +296,8 @@ void pll_reset(struct clock_pll  * pll)
 
 }
 
-void pll_init(struct clock_pll  * pll, struct clock  * clk)
+void pll_init(struct clock_pll  * pll)
 {
-	pll->clk = clk;
 	pll->run = false;
 	pll->lock = false;
 	pll->drift = 0;

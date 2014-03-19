@@ -23,7 +23,7 @@
 #include <inttypes.h>
 
 #include "debug.h"
-#include "synclk.h"
+#include "clock.h"
 
 #ifndef CLOCK_DRIFT_MAX
 //#define CLOCK_DRIFT_MAX FLOAT_Q31(0.000200)
@@ -31,21 +31,51 @@
 #define CLOCK_DRIFT_MAX FLOAT_Q31(0.000500)
 #endif
 
-#ifndef ENABLE_CLK_HIGH_RESOLUTION
-#define ENABLE_CLK_HIGH_RESOLUTION 1
-#endif
-
 /****************************************************************************
  * Clock
  ****************************************************************************/
 
-#if ENABLE_CLK_HIGH_RESOLUTION
+struct clock {
+	volatile uint64_t timestamp; /* clock timestamp */
+	uint64_t offset; /* clock offset */
+	uint32_t resolution; /* fractional clock resolution */
+	uint32_t increment; /* fractional per tick increment */
+	int32_t n_freq; /* frequency itegral part */
+	int32_t q_freq; /* frequency decimal part */
+	int32_t drift_comp; /* drift compensation seconds per ticks */
+	int32_t jitter;
+	int64_t tmr_k; /* multiplication factor for hw timer ticks conversion */
+	float tmr_fk; /* multiplication factor for hw timer ticks conversion */
+	bool pps_flag;
+	int hw_tmr;
+};
+
+struct clock sys_clk;
+
 /* Hardware timer frequency */
 #define HW_TMR_FREQ_HZ 1000000
 //#define HW_TMR_FREQ_HZ 110000000
 #include "chime.h" 
 
-uint64_t clock_timestamp(struct clock * clk) 
+/* Update the clock time.
+   This function should be called periodically by an
+   interrupt handler. */
+bool clock_tick(void)
+{
+	struct clock * clk = &sys_clk;
+	register uint64_t ts;
+	register uint32_t sec;
+
+	DBG5("tick");
+
+	ts = clk->timestamp;
+	sec = ts >> 32;
+	clk->timestamp = ts += clk->increment;
+
+	return ((ts >> 32) != sec) ? true : false;
+}
+
+static uint64_t clock_timestamp(struct clock * clk) 
 {
 	register uint32_t cnt0;
 	register uint32_t cnt1;
@@ -80,44 +110,21 @@ uint64_t clock_timestamp(struct clock * clk)
 	return ts + dt;
 }
 
-#else
-
 /* Return the uncorrected (raw) clock timestamp */
-uint64_t clock_timestamp(struct clock * clk) 
+uint64_t clock_monotonic_get(void)
 {
+	struct clock * clk = &sys_clk;
 	register uint64_t ts;
 
-	/* Disable interrupts */
-
-	ts = clk->timestamp;
-
-	/* Restore interrupts */
+	ts = clock_timestamp(clk);
 
 	return ts;
 }
 
-#endif
-
-/* Update the clock time.
-   This function should be called periodically by an
-   interrupt handler. */
-bool clock_tick(struct clock * clk)
-{
-	register uint64_t ts;
-	register uint32_t sec;
-
-	DBG5("tick");
-
-	ts = clk->timestamp;
-	sec = ts >> 32;
-	clk->timestamp = ts += clk->increment;
-
-	return ((ts >> 32) != sec) ? true : false;
-}
-
 /* Return the corrected (offset) clock time */
-uint64_t clock_time_get(struct clock * clk)
+uint64_t clock_realtime_get(void)
 {
+	struct clock * clk = &sys_clk;
 	register uint64_t ts;
 
 	/* Disable interrupts */
@@ -132,27 +139,26 @@ uint64_t clock_time_get(struct clock * clk)
 
 /* Set the clock to the specified timestamp 'ts'. 
    This will adjust the clock offset only. */ 
-void clock_time_set(struct clock * clk, uint64_t ts)
+void clock_time_set(uint64_t ts)
 {
-	/* Disable interrupts */
+	struct clock * clk = &sys_clk;
+
 	clk->offset = (int64_t)(ts - clock_timestamp(clk));
-	/* Restore interrupts */
 }
 
 /* Step the clock by the specified interval 'dt'. 
    This will adjust the clock offset only. */ 
-void clock_step(struct clock * clk, int64_t dt)
+void clock_step(int64_t dt)
 {
-	/* Disable interrupts */
+	struct clock * clk = &sys_clk;
 
 	clk->offset += dt;
-
-	/* Restore interrupts */
 }
 
 /* Adjust the clock frequency */ 
-int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
+int32_t clock_drift_comp(int32_t drift, int32_t est_err)
 {
+	struct clock * clk = &sys_clk;
 	register int32_t clk_d;
 	register int32_t q31_d;
 
@@ -186,16 +192,18 @@ int32_t clock_drift_comp(struct clock * clk, int32_t drift, int32_t est_err)
 	return q31_d * clk->n_freq + Q31_MUL(q31_d, clk->q_freq);
 }
 
-int32_t clock_drift_get(struct clock * clk)
+int32_t clock_drift_get(void)
 {
+	struct clock * clk = &sys_clk;
 	register int32_t q31_d = clk->drift_comp;
 
 	return q31_d * clk->n_freq + Q31_MUL(q31_d, clk->q_freq);
 }
 
 /* Initialize the clock */ 
-void clock_init(struct clock * clk, uint32_t tick_itvl, int hw_tmr)
+void clock_init(uint32_t tick_itvl, unsigned int hw_tmr)
 {
+	struct clock * clk = &sys_clk;
 	unsigned int period_us;
 	float freq_hz;
 
@@ -217,16 +225,16 @@ void clock_init(struct clock * clk, uint32_t tick_itvl, int hw_tmr)
 //	clk->offset = (uint64_t)1388534400LL << 32;  
 	clk->offset = 0;
 	clk->jitter = 0;
-	clk->pps_flag = false;
 
-	/* associated hardware timer */
-	clk->hw_tmr = hw_tmr;
+	{
+		/* associated hardware timer */
+		clk->hw_tmr = hw_tmr;
 
-	period_us = 1000000 / freq_hz;
-	(void)period_us;
-	INF("period=%d.%03d ms, resolution=%.6f", 
-		period_us / 1000, period_us % 1000, CLK_FLOAT(clk->resolution));
-
+		period_us = 1000000 / freq_hz;
+		(void)period_us;
+		INF("period=%d.%03d ms, resolution=%.6f", 
+			period_us / 1000, period_us % 1000, CLK_FLOAT(clk->resolution));
+	}
 }
 
 
