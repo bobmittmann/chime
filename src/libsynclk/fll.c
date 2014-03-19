@@ -24,9 +24,18 @@
 #include <time.h>
 #include <inttypes.h>
 
-#include "synclk.h"
 #include "debug.h"
+/* 
+ * XXX: simulation; 
+ */
 #include "chime.h"
+
+__thread int fll_win_var;
+__thread int fll_phi_var;
+__thread int fll_err_var;
+
+
+#include "synclk.h"
 
 /****************************************************************************
  * Clock FLL (Frequency Locked Loop) 
@@ -39,11 +48,6 @@
 
 #define FLL_KP 128 /* Attack gain */
 #define FLL_KD 256 /* Decay gain */
-/* 
-XXX: simulation; */
-int fll_win_var;
-int fll_phi_var;
-int fll_err_var;
 
 static void __fll_clear(struct clock_fll  * fll)
 {
@@ -66,8 +70,10 @@ static void __fll_stat_clear(struct clock_fll  * fll)
 	fll->stat.jit_max = 0;
 }
 
-/* FLL algorithm.
-   It will adjust the frequency of the local clock to a reference clock... */
+/*
+ * FLL algorithm.
+ * It will adjust the frequency of the local clock to a reference clock... 
+ */
 void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 {
 	int64_t clk_dt;
@@ -196,8 +202,7 @@ void fll_step(struct clock_fll  * fll, uint64_t ref_ts, int64_t offs)
 
 		e_drift = FLOAT_Q31(1.0 - freq);
 		d_drift = FLOAT_Q31(Q31_FLOAT(fll->drift_err - e_drift) / dx);
-		drift = fll->clk_drift + e_drift + 16 * d_drift;
-		// drift = (2 * fll->clk_drift + e_drift + 32 * d_drift) / 2;
+		drift = fll->clk_drift + e_drift + 16 * d_drift;		
 
 		DBG1("FLL (t=%d) dx=%.1f err=%s drift=%0.9f", 
 			CLK_SEC(ref_ts), dx, FMT_CLK(err), Q31_FLOAT(fll->clk_drift));

@@ -21,13 +21,26 @@
 #include <time.h>
 #include <math.h>
 #include <inttypes.h>
-
 #include "debug.h"
-#include "synclk.h"
+
+/*
+ * XXX: Simulation
+ */
+
 #include "chime.h"
+
+__thread int pll_offs_var;
+__thread int pll_err_var;
+__thread int de_var;
+
+#include "synclk.h"
 
 #ifndef ENABLE_PLL_LOW_PASS
 #define ENABLE_PLL_LOW_PASS 1
+#endif
+
+#ifndef ENABLE_PLL_LOW_PASS2
+#define ENABLE_PLL_LOW_PASS2 0
 #endif
 
 #define PLL_OFFS_MAX FLOAT_CLK(0.0625)
@@ -126,6 +139,9 @@ int32_t iir2_apply(int32_t x[], int32_t y[], int32_t v)
 #endif
 #endif
 
+/*
+ * Reset the PLL state
+ */
 static void __pll_clear(struct clock_pll  * pll)
 {
 	int i;
@@ -149,14 +165,14 @@ static void __pll_stat_clear(struct clock_pll  * pll)
 	pll->stat.step_cnt = 0;
 }
 
-__thread int pll_offs_var;
-__thread int pll_err_var;
-__thread int de_var;
-
 #define PLL_KD 4
 #define PLL_KP 8
 #define PLL_KI 512
 
+/*
+ * PLL control algorithm
+ * This function should be called periodically once a second.
+ */
 void pll_step(struct clock_pll  * pll)
 {
 	int32_t ierr;
@@ -175,14 +191,16 @@ void pll_step(struct clock_pll  * pll)
 	chime_var_rec(pll_offs_var, Q31_FLOAT(pll->offs) + 1.7);
 	chime_var_rec(pll_err_var, Q31_FLOAT(err) + 1.65);
 
-	return;
 }
 
+
+/*
+ * Adjust the clock phase.
+ */
 void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 {
 	int32_t x;
 	float dt;
-	(void)dt;
 
 	if ((offs >= PLL_OFFS_MAX) || (offs <= -PLL_OFFS_MAX)) {
 		WARN("clock_step()!!");
@@ -206,15 +224,22 @@ void pll_phase_adjust(struct clock_pll  * pll, int64_t offs, int64_t itvl)
 	pll->ref = x;
 
 	dt = CLK_FLOAT(offs) / CLK_FLOAT(itvl);
+	(void)dt;
 
 	DBG("offs=%s itvl=%s dt=%.6f", FMT_CLK(pll->offs), FMT_CLK(pll->itvl), dt);
 }
 
+/*
+ * Reset the PLL 
+ */
 void pll_reset(struct clock_pll  * pll)
 {
 	__pll_clear(pll);
 }
 
+/* 
+ * Initialize the PLL 
+ */
 void pll_init(struct clock_pll  * pll)
 {
 

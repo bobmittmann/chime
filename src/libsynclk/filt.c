@@ -23,16 +23,25 @@
 #include <inttypes.h>
 
 #include "debug.h"
-#include "synclk.h"
+
+/*
+ * XXX: Simulation
+ */
+
 #include "chime.h"
 
 __thread int filt_avg_var;
 __thread int filt_sigma_var;
 __thread int filt_offs_var;
 
+#include "synclk.h"
+
 #define	CLOCK_PHI FLOAT_CLK(15e-6) /* max frequency error (s/s) */
 #define FILT_OFFS_MAX FLOAT_CLK(0.1250)
 
+/*
+ * Clear filter
+ */
 static void __filt_clear(struct clock_filt * filt)
 {
 	int i;
@@ -49,6 +58,9 @@ static void __filt_clear(struct clock_filt * filt)
 		filt->x[i] = 0;
 }
 
+/*
+ * Clear filter statistics
+ */
 static void __filt_stat_clear(struct clock_filt * filt)
 {
 	filt->stat.spike = 0;
@@ -56,6 +68,9 @@ static void __filt_stat_clear(struct clock_filt * filt)
 	filt->stat.drop = 0;
 }
 
+/*
+ * Initialize filter
+ */
 void filt_init(struct clock_filt * filt, uint32_t precision)
 {
 	filt->precision = precision; 
@@ -66,10 +81,14 @@ void filt_init(struct clock_filt * filt, uint32_t precision)
 	__filt_clear(filt);
 	__filt_stat_clear(filt);
 
-	/* open a simulation variable recorder */
-	filt_avg_var = chime_var_open("filt_avg");
-	filt_sigma_var = chime_var_open("filt_sigma");
-	filt_offs_var = chime_var_open("filt_offs");
+	{
+		/*
+     	 * XXX: open simulation variable recorders
+     	 */
+		filt_avg_var = chime_var_open("filt_avg");
+		filt_sigma_var = chime_var_open("filt_sigma");
+		filt_offs_var = chime_var_open("filt_offs");
+	}
 }
 
 
@@ -90,50 +109,9 @@ void filt_reset(struct clock_filt * filt, int32_t peer_delay,
 }
 
 
-float __variance(int32_t offs[], int n)
-{
-	float sum1 = 0;
-	float sum2 = 0;
-	float mean = 0;
-	float x;
-	int i;
-
-	for (i = 0; i < n; ++i) {
-		x = Q31_FLOAT(offs[i]);
-		sum1 = sum1 + x;
-	}
-
-	mean = sum1 / n;
-
-	for (i = 0; i < n; ++i) {
-		x = Q31_FLOAT(offs[i]);
-		sum2 = sum2 + (x - mean) * (x - mean);
-	}
-
-	return sum2 / (n - 1);
-}
-
-float __online_variance(int64_t offs[], int len)
-{
-	float mean = 0;
-	float m2 = 0;
-	int n = 0;
-	int i;
-
-	for (i = 0; i < len; ++i)  {
-		float x = CLK_FLOAT(offs[i]);
-		float delta;
-		n = n + 1;
-		delta = x - mean;
-		mean = mean + delta / n;
-		m2 = m2 + delta * (x - mean);
-	}
-
-	return m2 / (n - 1);
-}
-
-
-/* Called when a time packed is received from the network */
+/*
+ * Called when a time packed is received from the network 
+ */
 int64_t filt_receive(struct clock_filt * filt, 
 					 uint64_t remote, uint64_t local)
 {
@@ -187,7 +165,16 @@ int64_t filt_receive(struct clock_filt * filt,
 			filt->len = ++n;
 		} else {
 			dx = x1 - filt->average;
-			if (Q31_MUL(dx, dx) > filt->variance * 4) {
+      /* If the deviation from average is twice the standard deviation
+       *  ignore the sample.
+       *   dx = x - avg;
+       *   sigma = sqrt(variance)
+       * if (x > 2*sigma) { ...  
+       *
+       * The implementation squares dx to avoid the square root on 
+       * variance. We have then to square the 2 factor: 2^2 = 4;
+       */
+			if (Q31_MUL(dx, dx) > (4 * filt->variance)) {
 				/* do not update the clock */
 				ret = CLK_OFFS_INVALID;
 				chime_var_rec(filt_avg_var, 1.9);
@@ -226,19 +213,10 @@ int64_t filt_receive(struct clock_filt * filt,
 		filt->average = avg;
 	}
 
-//	chime_var_rec(filt_mean_var, filt->stat.mean + 1.85);
-
-//	chime_var_rec(filt_offs_var, CLK_FLOAT(filt->offs) + 1.85);
 	chime_var_rec(filt_offs_var, Q31_FLOAT(dx) + 1.85);
-
-//	chime_var_rec(filt_avgs_var, Q31_FLOAT(filt->average) + 1.85);
-
 	chime_var_rec(filt_sigma_var, sqrt(Q31_FLOAT(filt->variance) * 3) + 1.85);
-
-//	chime_var_rec(filt_avg_var, sqrt(__variance(filt->x, CLK_FILT_LEN)) + 1.85);
 	chime_var_rec(filt_avg_var, CLK_FLOAT(filt->average) + 1.85);
 
-	/* FIXME: implement filtering */
 	DBG1("remote=%s local=%s offs=%s delay=%s", 
 		FMT_CLK(remote), FMT_CLK(local), FMT_CLK(offs), FMT_CLK(delay));
 

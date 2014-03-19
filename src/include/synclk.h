@@ -1,10 +1,6 @@
 #ifndef __SYNCLK_H__
 #define __SYNCLK_H__
 
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-
 #include "clock.h"
 
 /* 
@@ -100,6 +96,7 @@ struct synclk_pkt {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 
 /****************************************************************************
  * Clock PLL (Phase Locked Loop) functions 
