@@ -7,7 +7,7 @@
 
 #ifndef __CHIME_I__
 #error "Never use <chime-i.h> directly; include <chime.h> instead."
-#endif 
+#endif
 
 #define _GNU_SOURCE
 #include <stdlib.h>
@@ -70,7 +70,7 @@ typedef int __fd_t;
 
 #define TS2MSEC(X) (uint64_t)((uint64_t)(X)/MSEC)
 #define TS2USEC(X) (uint64_t)((uint64_t)(X)/USEC)
-#define TS2F(X) ((double)(X)/1e15) 
+#define TS2F(X) ((double)(X)/1e15)
 
 /*****************************************************************************
  * Chime RPC requests
@@ -192,7 +192,7 @@ struct chime_req_join {
 
 #define CHIME_REQ_JOIN_LEN CHIME_REQ_LEN(chime_req_join)
 
-/* Init request operation. 
+/* Init request operation.
    This is a response from a reset event. */
 struct chime_req_init {
 	struct chime_req_hdr hdr;
@@ -369,7 +369,7 @@ struct chime_event {
 #define CHIME_EVENT_LEN sizeof(struct chime_event)
 
 /*****************************************************************************
- * Chime Client CPU  
+ * Chime Client CPU
  *****************************************************************************/
 
 struct cpu_info {
@@ -385,7 +385,7 @@ struct cpu_info {
 
 struct dir_lst {
 	uint8_t cnt;
-	struct { 
+	struct {
 		uint16_t oid;
 		char name[ENTRY_NAME_MAX];
 	} entry[0];
@@ -449,10 +449,10 @@ struct exp_rand_state {
 };
 
 /*****************************************************************************
- * Comm 
+ * Comm
  *****************************************************************************/
 
-#define CHIME_COMM_MAX CHIME_NODE_MAX 
+#define CHIME_COMM_MAX CHIME_NODE_MAX
 #define COMM_STAT_BINS 256
 
 struct chime_comm {
@@ -470,7 +470,7 @@ struct chime_comm {
 };
 
 /*****************************************************************************
- * Variable 
+ * Variable
  *****************************************************************************/
 
 struct var_rec {
@@ -478,7 +478,7 @@ struct var_rec {
 	double y;
 };
 
-#define CHIME_VAR_MAX CHIME_NODE_MAX 
+#define CHIME_VAR_MAX CHIME_NODE_MAX
 
 struct chime_var {
 	char name[ENTRY_NAME_MAX];
@@ -487,6 +487,7 @@ struct chime_var {
 	uint32_t pos;
 	uint32_t cnt;
 	uint32_t len;
+	bool rec_en;
 	FILE * f_dat;
 	struct var_rec * rec;
 };
@@ -560,7 +561,7 @@ void __mq_close(__mq_t mq);
 void __mq_unlink(const char * name);
 
 /*****************************************************************************
- * Shared memory 
+ * Shared memory
  *****************************************************************************/
 
 int __shm_create(__shm_t * pshm, const char * name, size_t size);
@@ -659,9 +660,9 @@ void __term_sig_handler(void (* handler)(void));
 
 void __dir_lst_clear(struct dir_lst * lst);
 
-uint16_t __dir_lst_lookup(struct dir_lst * lst, const char * name); 
+uint16_t __dir_lst_lookup(struct dir_lst * lst, const char * name);
 
-bool __dir_lst_insert(struct dir_lst * lst, const char * name, int oid); 
+bool __dir_lst_insert(struct dir_lst * lst, const char * name, int oid);
 
 /*****************************************************************************
  * Random number generators
@@ -676,7 +677,7 @@ void exp_rand_init(struct exp_rand_state * erp, double z, uint64_t seed);
 double exp_rand(struct exp_rand_state * erp);
 
 /*****************************************************************************
- * Bitmap allocator 
+ * Bitmap allocator
  *****************************************************************************/
 
 void __bmp_alloc_init(uint64_t bmp[], int len);
@@ -693,7 +694,7 @@ bool float_to_ratio(struct ratio * r, double x, uint32_t maxden);
 
 #ifdef __cplusplus
 }
-#endif	
+#endif
 
 #endif /* __CHIME_I_H__ */
 

@@ -399,6 +399,8 @@ int main(int argc, char *argv[])
 		WARN("chime_comm_create() failed!");	
 	}
 
+	rtc_sim_init();
+
 	/* Commonn value for Tc = 0.04 ppm,
 		Limits: 
 		- offset +-200 ppm  
@@ -415,8 +417,6 @@ int main(int argc, char *argv[])
 		chime_client_stop();
 		return 3;
 	}
-
-	rtc_sim_init();
 
 	chime_reset_all();
 

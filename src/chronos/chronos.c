@@ -145,13 +145,13 @@ int main(int argc, char *argv[])
 			break;
 
 		case '6':
-			printf("--- Speed x60 ---\n");
-			chime_server_speed_set(60);
+			printf("--- Speed x100,000---\n");
+			chime_server_speed_set(100000);
 			break;
 
 		case '7':
-			printf("--- Speed x2 ---\n");
-			chime_server_speed_set(2);
+			printf("--- Speed x1,000,000---\n");
+			chime_server_speed_set(1000000);
 			break;
 
 		case '8':

@@ -17,6 +17,7 @@
 #include "list.h"
 
 #define CHIME_NODE_BMP_LEN (((CHIME_NODE_MAX) + 63) / 64)
+#define CHIME_VAR_REC_MAX_PTS (2 * 1024 * 1024)
 
 /*****************************************************************************
  * Server
@@ -91,23 +92,23 @@ static struct chime_node * __node_getinstance(int node_id)
 }
 
 const uint64_t bin_range[20] = {
-	   1 * USEC,  
-	   2 * USEC,  
-	   5 * USEC,  
-	  10 * USEC,  
-	  20 * USEC,  
-	  50 * USEC,  
-	 100 * USEC,  
-	 200 * USEC,  
-	 500 * USEC,  
-	   1 * MSEC,  
-	   2 * MSEC,  
-	   5 * MSEC,  
-	  10 * MSEC,  
-	  20 * MSEC,  
-	  50 * MSEC,  
-	 100 * MSEC,  
- 	 200 * MSEC, 
+	   1 * USEC,
+	   2 * USEC,
+	   5 * USEC,
+	  10 * USEC,
+	  20 * USEC,
+	  50 * USEC,
+	 100 * USEC,
+	 200 * USEC,
+	 500 * USEC,
+	   1 * MSEC,
+	   2 * MSEC,
+	   5 * MSEC,
+	  10 * MSEC,
+	  20 * MSEC,
+	  50 * MSEC,
+	 100 * MSEC,
+ 	 200 * MSEC,
 	 500 * MSEC,
     1000 * MSEC,
     2000 * MSEC
@@ -259,7 +260,7 @@ static void __chime_comm_hist_add(struct chime_comm * comm, uint64_t delay)
 {
 	int n;
 
-	DBG5("bin_delay=%"PRIu64" delay=%"PRIu64".", 
+	DBG5("bin_delay=%"PRIu64" delay=%"PRIu64".",
 		TS2USEC(comm->bin_delay), TS2USEC(delay));
 
 	n = delay / comm->bin_delay;
@@ -283,7 +284,7 @@ bool __chime_var_flush(struct chime_var * var)
 			return false;
 		}
 	}
-	
+
 	if (var->pos > var->cnt) {
 		ERR("var->pos(%d) <= var->cnt(%d)!", var->pos, var->cnt);
 		assert(var->pos <= var->cnt);
@@ -312,6 +313,7 @@ static void __chime_var_reset(struct chime_var * var)
 	var->clk = server.sim.clk;
 	var->cnt = 0;
 	var->pos = 0;
+	var->rec_en = true;
 	objpool_unlock();
 
 	if (var->f_dat != NULL) {
@@ -450,8 +452,8 @@ static int __chime_node_clear_comms(int node_id)
 	return n;
 }
 
-/* remove a node from simulation 
-   return the state of the breakpoint flag  
+/* remove a node from simulation
+   return the state of the breakpoint flag
  */
 static bool __chime_node_remove(int node_id)
 {
@@ -480,7 +482,7 @@ static bool __chime_node_remove(int node_id)
 	__chime_node_clear_events(node_id);
 
 	__chime_node_clear_comms(node_id);
-	
+
 	return bkpt;
 }
 
@@ -520,7 +522,7 @@ static bool __chime_node_reset(int node_id, uint32_t sid)
 
 /* Node probing:
    1. the server sends an event with a sequence number to all nodes.
-   2. the node write the sequence into it's shared node block 
+   2. the node write the sequence into it's shared node block
    3. server waits 50ms
    4. server compare the node's shared memory sequence
  */
@@ -646,7 +648,7 @@ static void __chime_sim_reset(void)
 	/* get all events from the heap */
 	while (heap_extract_min(server.heap, NULL, &evt)) {
 		if (evt.oid != 0) {
-			DBG1("releasing object OID=%d node_id=%d event=%s", 
+			DBG1("releasing object OID=%d node_id=%d event=%s",
 				 evt.node_id, evt.oid, __evt_opc_nm[evt.opc]);
 			obj_release(evt.oid);
 		}
@@ -698,11 +700,11 @@ static void __chime_sim_step(void)
 
 		if (ticks > CHIME_TICKS_PER_STEP_MAX) {
 			/* The simulation is running slow.
-			   it is time to get a faster computer... */ 
+			   it is time to get a faster computer... */
 			if (server.sim.tick_lost == 0) {
 				WARN("sluggishness detected...");
 			}
-			/* limit the simulation ticks consumption, 
+			/* limit the simulation ticks consumption,
 			   to avoid it growing fat. Add the remaining ticks
 			   to the lost count for speed correction. */
 			server.sim.tick_lost += ticks - CHIME_TICKS_PER_STEP_MAX;
@@ -737,7 +739,7 @@ static void __chime_sim_step(void)
 //	heap_dump(stderr, server.heap);
 
 		/* dead node !!!! */
-		assert(node != NULL); 
+		assert(node != NULL);
 
 		/* FIXME: Is it possible to have multiple events to the same node
 		   (CPU) in the event heap.
@@ -766,7 +768,7 @@ static void __chime_sim_step(void)
 		/* update the node clock */
 		node->clk = cpu_clk;
 
-		DBG1("<%d> node->clk=%"PRIu64" dt=%"PRId64".", 
+		DBG1("<%d> node->clk=%"PRIu64" dt=%"PRId64".",
 			 node_id, node->clk, dt);
 
 		assert(dt >= 0);
@@ -809,7 +811,7 @@ static void __chime_sim_step(void)
 		if (evt.opc == CHIME_EVT_EOT0) {
 			DBG("<%d> COMM{oid=%d} EOT0.", evt.node_id, evt.oid);
 		} else if (evt.opc == CHIME_EVT_RCV) {
-			DBG("<%d> COMM{oid=%d} buf{oid=%d len=%d} RCV.", evt.node_id, 
+			DBG("<%d> COMM{oid=%d} buf{oid=%d len=%d} RCV.", evt.node_id,
 				evt.oid, evt.buf.oid, evt.buf.len);
 		}
 #endif
@@ -841,7 +843,7 @@ void __chime_sig_pause_sim(struct chime_request * req)
 		/* clear timer ticks requests */
 		server.tmr.ack = server.tmr.req;
 
-		/* artificially increase the number of running CPUs 
+		/* artificially increase the number of running CPUs
 		   to prevent simulation stepping */
 		server.sim.checkout_cnt++;
 		DBG2("checkout_cnt=%d ...", server.sim.checkout_cnt);
@@ -867,7 +869,7 @@ void __chime_sig_resume_sim(struct chime_request * req)
 
 void __chime_sig_sim_tick(struct chime_request * req)
 {
-	/* The timer clock is chimming, there are some 
+	/* The timer clock is chimming, there are some
 	 ticks available ... */
 
 	if (server.sim.checkout_cnt == 0)
@@ -951,7 +953,7 @@ void __chime_req_timer(struct chime_request * req)
 #if 0
 	if ((int64_t)(clk - server.heap->clk) < 0) {
 		WARN("<%d> cycles=%u node->clk=%"PRIu64".", node_id, cycles, node->clk);
-		WARN("clk=%"PRIu64" heap->clk=%"PRIu64" diff=%"PRId64"", 
+		WARN("clk=%"PRIu64" heap->clk=%"PRIu64" diff=%"PRId64"",
 			 clk, server.heap->clk, (int64_t)(clk - server.heap->clk));
 	}
 #endif
@@ -1020,7 +1022,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 	/* transmission time */
 	xmt_dt = bits * comm->bit_time;
 
-	DBG4("bits=%u speed=%0.1fbps xmt_dt=%"PRIu64"", 
+	DBG4("bits=%u speed=%0.1fbps xmt_dt=%"PRIu64"",
 		bits, attr->speed_bps, TS2USEC(xmt_dt));
 
 	/* Medium access delay */
@@ -1040,7 +1042,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 		mac_delay = comm->fix_delay;
 		DBG4("latency=0.0 delay=%"PRIu64".", TS2USEC(mac_delay));
 	}
-	
+
 	if (attr->nod_delay != 0) {
 		int n = LIST_LEN(comm->node_lst);
 		mac_delay += unif_rand(&comm->randseed1) * attr->nod_delay * n * SEC;
@@ -1065,7 +1067,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 	} else {
 		uint32_t eot_cycles;
 		/* cycles round down (floor) */
-		eot_cycles = (eot_clk - xmt_node->clk) / xmt_node->dt; 
+		eot_cycles = (eot_clk - xmt_node->clk) / xmt_node->dt;
 		clk = xmt_node->clk + (xmt_node->dt * eot_cycles);
 	}
 
@@ -1102,7 +1104,7 @@ void __chime_req_comm_xmt(struct chime_request * req)
 			WARN("<%d> invalid node!!!", id);
    			assert(node != NULL);
 			continue;
-		}	
+		}
 
 		evt.node_id = id;
 
@@ -1197,10 +1199,10 @@ void __chime_req_step(struct chime_request * req)
 #if DEBUG
 	/* insert into the clock simulation heap */
 	if ((int64_t)(clk - server.heap->clk) < 0) {
-		WARN("<%d> clk=%"PRIu64" diff=%"PRId64, node_id, clk, 
+		WARN("<%d> clk=%"PRIu64" diff=%"PRId64, node_id, clk,
 			 (int64_t)(clk - server.heap->clk));
 		WARN("<%d> cycles=%d", node_id, cycles);
-		WARN("<%d> node->clk=%"PRIu64" diff=%"PRId64, node_id, node->clk, 
+		WARN("<%d> node->clk=%"PRIu64" diff=%"PRId64, node_id, node->clk,
 			 (int64_t)(node->clk - server.heap->clk));
 		heap_dump(stderr, server.heap);
 	}
@@ -1331,7 +1333,7 @@ void __chime_req_bye(struct chime_request * req)
 
 			/* all CPUs checked in, step the simulator */
 			__chime_sim_step();
-		} else { 
+		} else {
 			DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 		}
 	}
@@ -1403,7 +1405,7 @@ void __chime_req_halt(struct chime_request * req)
 
 		/* all CPUs checked in, step the simulator */
 		__chime_sim_step();
-	} else { 
+	} else {
 		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 	}
 
@@ -1427,7 +1429,7 @@ void __chime_req_abort(struct chime_request * req)
 
 	assert(node->bkpt == false);
 
-	WARN("RIP. <%d> OID=%d, died with code %d.", 
+	WARN("RIP. <%d> OID=%d, died with code %d.",
 		node_id, req->oid, req->abort.code);
 	__chime_node_remove(node_id);
 
@@ -1435,7 +1437,7 @@ void __chime_req_abort(struct chime_request * req)
 	if (--server.sim.checkout_cnt == 0) {
 		/* all CPUs checked in, step the simulator */
 		__chime_sim_step();
-	} else { 
+	} else {
 		DBG2("<%d> checkout_cnt=%d ...", node_id, server.sim.checkout_cnt);
 	}
 }
@@ -1517,7 +1519,7 @@ void __chime_req_temp_set(struct chime_request * req)
 	{
 		double freq_hz;
 		freq_hz = node->dt / 1000.0;
-		DBG1("<%d> temp=%.1f dt=%"PRIu64"(fs/us) freq=%0.3fHz", 
+		DBG1("<%d> temp=%.1f dt=%"PRIu64"(fs/us) freq=%0.3fHz",
 			 node_id, t, node->dt, freq_hz);
 	}
 #endif
@@ -1581,7 +1583,7 @@ void __chime_req_sim_speed_set(struct chime_request * req)
 
 	server.sim.period = (server.tmr.period * r.p) / r.q;
 
-	INF("speed=%d/%d period=%"PRIu64" clk=%"PRIu64".", 
+	INF("speed=%d/%d period=%"PRIu64" clk=%"PRIu64".",
 		r.p, r.q, server.sim.period, server.sim.clk);
 
 	__sim_timer_reset();
@@ -1640,7 +1642,7 @@ void __chime_req_reset_all(struct chime_request * req)
 		struct chime_comm * comm;
 
 		DBG3("Comm OID=%d...", server.comm_oid[i]);
-		
+
 		comm = obj_getinstance(server.comm_oid[i]);
 		__chime_comm_reset(comm);
 	}
@@ -1674,7 +1676,7 @@ void __chime_req_reset_all(struct chime_request * req)
 		}
 	}
 
-	/* And God saw the light, and it was good; 
+	/* And God saw the light, and it was good;
 	   and God divided the light from the darkness */
 	if (LIST_LEN(err) > 0) {
 		DBG("removing dead nodes...");
@@ -1753,11 +1755,35 @@ void __chime_req_var_rec(struct chime_request * req)
 
 	var = obj_getinstance(req->oid);
 
+	if (!var->rec_en) {
+        DBG2("<%d> var %s, recording disabled.", node_id, var->name);
+        return;
+	}
+
 	/* check for space availability. If we are short,
 	   realloc() doubling the previous length. */
 	if (var->cnt == var->len) {
-		var->len *= 2;
-		var->rec = realloc(var->rec, var->len * sizeof(struct var_rec));
+        unsigned int len = var->len * 2;
+        struct var_rec * rec;
+
+        if (len > CHIME_VAR_REC_MAX_PTS) {
+            /* Disable the recorder */
+            var->rec_en = false;
+            WARN("<%d> var %s, out of recording space.", node_id, var->name);
+            return;
+        }
+
+        rec = realloc(var->rec, len * sizeof(struct var_rec));
+        if (var->rec == NULL) {
+            /* Disable the recorder */
+            var->rec_en = false;
+            WARN("<%d> var %s, out of memory.", node_id, var->name);
+            assert(var->rec != NULL);
+            return;
+        }
+
+		var->len = len;
+		var->rec = rec;
 	}
 
 	/* Finally store the record value and increment the record count */
@@ -1867,11 +1893,11 @@ static int chime_ctrl_task(void * arg)
 		case CHIME_REQ_COMM_STAT:
 			__chime_req_comm_stat(req);
 			break;
-			
+
 		case CHIME_REQ_VAR_CREATE:
 			__chime_req_var_create(req);
 			break;
-			
+
 		case CHIME_REQ_VAR_REC:
 			__chime_req_var_rec(req);
 			break;
@@ -2033,10 +2059,10 @@ int chime_server_start(const char * name)
 		server.sim.checkout_cnt = 0;
 		/* set initial session id.
 		  The session id is incremented on each reset.
-		  It's used to synchronize nodes. 
-		  Nodes with wrong session ids are ignored 
+		  It's used to synchronize nodes.
+		  Nodes with wrong session ids are ignored
 		  from the current simulation session.*/
-		server.sim.sid = tv.tv_sec; 
+		server.sim.sid = tv.tv_sec;
 		/* set initial temperature */
 		server.temperature = 25.0;
 
@@ -2108,7 +2134,7 @@ int chime_server_start(const char * name)
 
 			INF("creating thread ...");
 			server.enabled = true;
-			if ((ret = __thread_create(&server.ctrl_thread, 
+			if ((ret = __thread_create(&server.ctrl_thread,
 									  (void * (*)(void *))chime_ctrl_task,
 									  (void *)NULL)) < 0) {
 				ERR("__thread_create() failed: %s.", strerror(ret));

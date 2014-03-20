@@ -530,6 +530,7 @@ bool tracef(int lvl, const char * __fmt, ...)
 
 	if ((ret = __mq_send(cpu.xmt_mq, &req, CHIME_REQ_TRACE_LEN(n))) < 0) {
 		ERR("__mq_send() failed: %s.", __strerr());
+		__cpu_except(EXCEPT_MQ_SEND);
 	}
 
 	return (ret < 0) ? false : true;
@@ -631,6 +632,7 @@ bool chime_var_rec(int oid, double value)
 
 	if ((ret = __mq_send(cpu.xmt_mq, &req, CHIME_REQ_VAR_REC_LEN)) < 0) {
 		ERR("__mq_send() failed: %s.", __strerr());
+		__cpu_except(EXCEPT_MQ_SEND);
 	}
 
 	return (ret < 0) ? false : true;

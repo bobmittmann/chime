@@ -50,7 +50,7 @@ void heap_dump(FILE* f, struct clk_heap * heap)
 	fflush(f);
 }
 
-static void heap_exchange(struct clk_heap * heap, int i, int j)
+static inline void heap_exchange(struct clk_heap * heap, int i, int j)
 {
 	struct key_val tmp;
 
@@ -58,55 +58,6 @@ static void heap_exchange(struct clk_heap * heap, int i, int j)
 	HEAP_ENTRY(heap, i) = HEAP_ENTRY(heap, j);
 	HEAP_ENTRY(heap, j) = tmp;
 }
-
-static bool heap_decrease_key(struct clk_heap * heap, int i, uint64_t clk)
-{
-
-	int64_t key = (int64_t)(clk - heap->clk);
-
-	if (key > HEAP_KEY(heap, i)) {
-//		fprintf(stderr, "%s: key=%lld > HEAP_KEY(heap, i)\n", __func__, key);
-//		fflush(stderr);
-		/* new key is larger than current key */
-		return false; 
-	}
-
-//	fprintf(stderr, "%s: key=%lld\n", __func__, key);
-//	fflush(stderr);
-
-	HEAP_CLK(heap, i) = clk;
-
-	while ((i > 1) && (HEAP_KEY(heap, HEAP_PARENT(i)) > HEAP_KEY(heap, i))) {
-		heap_exchange(heap, i, HEAP_PARENT(i));
-		i = HEAP_PARENT(i);
-	}
-
-	return true;
-}
-
-#if 0
-static void min_heapify(struct clk_heap * heap, int size, int i)
-{
-	int l;
-	int r;
-	int min;
-
-	if ((l = HEAP_LEFT(i)) > size)
-		return;
-
-	min = (HEAP_KEY(heap, l) < HEAP_KEY(heap, i)) ? l : i;
-
-	r = HEAP_RIGHT(i);
-	if ((r <= size) && (HEAP_KEY(heap, r) < HEAP_KEY(heap, min)))
-		min = r;
-
-	if (min != i) {
-		heap_exchange(heap, i, min);
-		min_heapify(heap, size, min);
-	}
-}
-
-#else
 
 static inline void min_heapify(struct clk_heap * heap, int size, int i)
 {
@@ -129,8 +80,6 @@ static inline void min_heapify(struct clk_heap * heap, int size, int i)
 	}
 }
 
-#endif
-
 /* Insert a key/value pair into the heap, maintaining the heap property, 
    i.e., the minimum value is always at the top. */
 bool heap_insert_min(struct clk_heap * heap, uint64_t clk, 
@@ -146,19 +95,15 @@ bool heap_insert_min(struct clk_heap * heap, uint64_t clk,
 	i = HEAP_SIZE(heap) + 1;
 	HEAP_SIZE(heap) = i;
 
-	if (i == 1) {
-		HEAP_VAL(heap, 1) = *val;
-		HEAP_CLK(heap, 1) = clk;
-		return true;
+	HEAP_VAL(heap, i) = *val;
+	HEAP_CLK(heap, i) = clk;
+
+	while ((i > 1) && (HEAP_KEY(heap, HEAP_PARENT(i)) > HEAP_KEY(heap, i))) {
+		heap_exchange(heap, i, HEAP_PARENT(i));
+		i = HEAP_PARENT(i);
 	}
 
-	HEAP_VAL(heap, i) = *val;
-	HEAP_CLK(heap, i) = MAX_CLK(heap);
-
-//	fprintf(stderr, "%s: key=%lld\n", __func__, HEAP_KEY(heap, i));
-//	fflush(stderr);
-
-	return heap_decrease_key(heap, i, clk);
+	return true;
 }
 
 /* Get the minimum key from the heap */

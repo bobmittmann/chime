@@ -56,6 +56,54 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
+		<Unit filename="../libchime/chime-client.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-comm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-cpu.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-cpu.h" />
+		<Unit filename="../libchime/chime-i.h" />
+		<Unit filename="../libchime/chime-node.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-osal.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-server.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-trace.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/chime-util.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/clk-heap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/clk-heap.h" />
+		<Unit filename="../libchime/list.h" />
+		<Unit filename="../libchime/mempool.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/mempool.h" />
+		<Unit filename="../libchime/objpool.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/objpool.h" />
+		<Unit filename="../libchime/ptr-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/u16-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../libchime/u8-list.c">
+			<Option compilerVar="CC" />
+		</Unit>
 		<Unit filename="chronos.c">
 			<Option compilerVar="CC" />
 		</Unit>

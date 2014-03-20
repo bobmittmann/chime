@@ -69,13 +69,30 @@ static struct {
 #endif
 } rtc_chip;
 
+#define ISLEAP(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
+
 /* Pulse per second RTC interrupt */
 void rtc_pps_isr(void)
 {
-	const uint8_t mday_lut[12] = {
-		31, 28, 31, 30, 31, 30, 
-		31, 31, 30, 31, 30, 31
+	int yleap;
+
+	const uint8_t mday_lut[2][12] = {
+		{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+		{ 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
 	};
+
+//static const uint16_t year_lengths[2] = { 365, 366 };
+
+#if DEBUG
+	const char wday_lut[7][4] = {
+		"Sun",
+		"Mon",
+		"Tue",
+		"Wed",
+		"Thu",
+		"Fri",
+		"Sat" };
+#endif
 
 	DBG1("<%d> PPS", chime_cpu_id());
 
@@ -101,21 +118,26 @@ void rtc_pps_isr(void)
 	rtc_chip.hours = 0;
 	
 	/* count days of the week */
-	rtc_chip.day += (rtc_chip.day == 7) ? 1 : -6;
+	rtc_chip.day += (rtc_chip.day == 7) ? -6 : 1;
+
+	yleap = ISLEAP(rtc_chip.year + 1900);
 
 	/* count days of the month */
-	if (rtc_chip.date == mday_lut[rtc_chip.month - 1]) {
+	if (rtc_chip.date == mday_lut[yleap][rtc_chip.month - 1]) {
 		if (rtc_chip.month == 12) {
 			rtc_chip.month = 1;
 			rtc_chip.year++;
 		} else {
 			rtc_chip.month++;
 		}
+		rtc_chip.date = 1;
 	} else {
 		rtc_chip.date++;
 	}
 
-	INF("%02d-%02d-%04d", rtc_chip.date, rtc_chip.month, rtc_chip.year);
+	INF("%s %02d-%02d-%04d", 
+		wday_lut[rtc_chip.day - 1], rtc_chip.date, rtc_chip.month, 
+		rtc_chip.year + 1900);
 
 }
 
@@ -164,6 +186,7 @@ void rtc_chip_reset(void)
 	rtc_chip.day = 4;
 	rtc_chip.year = 14;
 #else
+	/* Fri, 01 Jan 1970 00:00:00 GMT */
 	rtc_chip.date = 1;
 	rtc_chip.month = 1;
 	rtc_chip.day = 5;
