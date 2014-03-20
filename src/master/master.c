@@ -52,12 +52,12 @@ int master_temp_var;
 #define ARCNET_COMM 0
 #define I2C_RTC_COMM 1
 
-#define SIM_POLL_JITTER_US 10000
+#define SIM_POLL_JITTER_US 2000
 #define SIM_TEMP_MIN -20
 #define SIM_TEMP_MAX 70
 
-#define SIM_XTAL_OFFS_PPM -100
-#define SIM_XTAL_TC_PPM -0.050
+#define SIM_XTAL_OFFS_PPM -20
+#define SIM_XTAL_TC_PPM -0.025
 //#define SIM_XTAL_OFFS_PPM 0
 //#define SIM_XTAL_TC_PPM 0
 
