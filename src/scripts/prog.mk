@@ -22,24 +22,6 @@ ifndef CONFIG_MK
  $(error Please include "config.mk" in your Makefile)
 endif
 
-THISDIR := $(dir $(lastword $(MAKEFILE_LIST)))
-
-ifndef SCRPTDIR
-  SCRPTDIR := $(abspath $(THISDIR))
-  BASEDIR := $(abspath $(THISDIR)/..)
-endif	
-
-ifndef TOOLSDIR
-  TOOLSDIR := $(realpath $(THISDIR)/../../tools)
-endif	
-
-#------------------------------------------------------------------------------ 
-# ld scripts
-#------------------------------------------------------------------------------ 
-ifndef LDDIR
-  LDDIR := $(realpath $(THISDIR)/../ld)
-endif	
-
 #------------------------------------------------------------------------------ 
 # cross compiling 
 #------------------------------------------------------------------------------ 
@@ -104,12 +86,15 @@ INCPATH	:= $(abspath $(INCPATH)) $(abspath .) $(abspath $(OUTDIR))
 
 #$(info --------------------------)
 #$(info OS = '$(OS)')
+#$(info OSTYPE = '$(OSTYPE)')
 #$(info HOST = '$(HOST)')
 #$(info CC = '$(CC)')
 #$(info SRCDIR = '$(SRCDIR)')
 #$(info DIRMODE = '$(DIRMODE)')
 #$(info INCPATH = '$(INCPATH)')
 #$(info LIBDIRS = '$(LIBDIRS)')
+#$(info DDIRS = '$(DDIRS)')
+#$(info INCPATH = '$(INCPATH)')
 #$(info LIBPATH = '$(LIBPATH)')
 #$(info abspath = '$(abspath .)')
 #$(info realpath = '$(realpath .)')
@@ -303,7 +288,7 @@ $(ODIRS):
 ifeq ($(HOST),Windows)
 	$(Q)$(MKDIR) $(subst /,\,$@)
 else
-	-$(Q)$(MKDIR) $@
+	$(Q)$(MKDIR) $@
 endif
 
 $(DDIRS):
@@ -311,7 +296,7 @@ $(DDIRS):
 ifeq ($(HOST),Windows)
 	$(Q)$(MKDIR) $(subst /,\,$@)
 else
-	-$(Q)$(MKDIR) $@ 
+	$(Q)$(MKDIR) $@ 
 endif
 
 $(LIBDIRS_ALL): | $(ODIRS)

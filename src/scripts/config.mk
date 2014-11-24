@@ -28,7 +28,14 @@ ifndef SCRPTDIR
 endif	
 
 ifndef TOOLSDIR
-  TOOLSDIR := $(realpath $(THISDIR)/../../tools)
+  TOOLSDIR := $(realpath $(BASEDIR)/../tools)
+endif	
+
+#------------------------------------------------------------------------------ 
+# ld scripts
+#------------------------------------------------------------------------------ 
+ifndef LDDIR
+  LDDIR := $(realpath $(BASEDIR)/ld)
 endif	
 
 SRCDIR := $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
