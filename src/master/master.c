@@ -260,7 +260,8 @@ void sim_timer_isr(void)
 	sim_temperature += sim_temp_rate;
 	chime_cpu_temp_set(sim_temperature);
 
-	chime_var_rec(master_temp_var, ((sim_temperature) / 100) + 1);
+//	chime_var_rec(master_temp_var, ((sim_temperature) / 100) + 1);
+	chime_var_rec(master_temp_var, sim_temperature);
 
 	if ((sim_minutes % 1) == 0) {
 		chime_sim_vars_dump();
