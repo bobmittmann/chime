@@ -22,13 +22,6 @@ ifndef CONFIG_MK
  $(error Please include "config.mk" in your Makefile)
 endif
 
-THISDIR := $(dir $(lastword $(MAKEFILE_LIST)))
-
-ifndef SCRPTDIR
-  SCRPTDIR := $(abspath $(THISDIR))
-  BASEDIR := $(abspath $(THISDIR)/..)
-endif	
-
 #------------------------------------------------------------------------------ 
 # cross compiling 
 #------------------------------------------------------------------------------ 
@@ -49,30 +42,51 @@ include $(SCRPTDIR)/cross.mk
 #------------------------------------------------------------------------------ 
 # generated source files
 #------------------------------------------------------------------------------ 
-HFILES_OUT = $(addprefix $(OUTDIR)/, $(HFILES_GEN))
-CFILES_OUT = $(addprefix $(OUTDIR)/, $(CFILES_GEN))
-SFILES_OUT = $(addprefix $(OUTDIR)/, $(SFILES_GEN))
+ifeq (Windows,$(HOST))
+  HFILES_OUT = $(addprefix $(OUTDIR)\, $(HFILES_GEN))
+  CFILES_OUT = $(addprefix $(OUTDIR)\, $(CFILES_GEN))
+  SFILES_OUT = $(addprefix $(OUTDIR)\, $(SFILES_GEN))
+else
+  HFILES_OUT = $(addprefix $(OUTDIR)/, $(HFILES_GEN))
+  CFILES_OUT = $(addprefix $(OUTDIR)/, $(CFILES_GEN))
+  SFILES_OUT = $(addprefix $(OUTDIR)/, $(SFILES_GEN))
+endif
 
 #------------------------------------------------------------------------------ 
 # object files
 #------------------------------------------------------------------------------ 
-OFILES = $(addprefix $(OUTDIR)/, $(CFILES_GEN:.c=.o) \
-			$(SFILES_GEN:.S=.o) $(CFILES:.c=.o) $(SFILES:.S=.o))
-#ODIRS = $(abspath $(sort $(dir $(OFILES))))
-ODIRS = $(sort $(dir $(OFILES)))
+OFILES = $(addprefix $(OUTDIR)/,\
+		   $(CFILES_GEN:.c=.o) \
+		   $(SFILES_GEN:.S=.o) \
+		   $(CFILES:.c=.o) \
+		   $(SFILES:.S=.o))
+
+#ifeq (Windows,$(HOST))
+#  ODIRS = $(subst /,\,$(sort $(dir $(OFILES))))
+#else
+  ODIRS = $(sort $(dir $(OFILES)))
+#endif
 
 #------------------------------------------------------------------------------ 
 # dependency files
 #------------------------------------------------------------------------------ 
-DFILES = $(addprefix $(DEPDIR)/, $(CFILES:.c=.d) $(SFILES:.S=.d))
-#DDIRS = $(abspath $(sort $(dir $(DFILES))))
-DDIRS = $(sort $(dir $(DFILES)))
+
+DFILES = $(OFILES:.o=.d) $(OFILES_OUT:.c=.d)
+
+#------------------------------------------------------------------------------ 
+# Installation directory
+#------------------------------------------------------------------------------ 
+
+INSTALLDIR = $(abspath .)
+
+ifndef LIBDIR
+  LIBDIR := $(OUTDIR)
+endif
 
 #------------------------------------------------------------------------------ 
 # path variables
 #------------------------------------------------------------------------------ 
 override INCPATH += $(abspath .)
-#INCPATH := $(abspath $(INCPATH))
 
 ifeq ($(HOST),Cygwin)
   INCPATH_WIN := $(subst \,\\,$(foreach h,$(INCPATH),$(shell cygpath -w $h)))
@@ -83,19 +97,24 @@ endif
 # library output files
 #------------------------------------------------------------------------------ 
 ifdef LIB_STATIC
-  LIB_STATIC_OUT = $(OUTDIR)/lib$(LIB_STATIC).a
-  LIB_STATIC_LST = $(OUTDIR)/lib$(LIB_STATIC).lst
-  LIB_OUT := $(LIB_STATIC_OUT)
-  LIB_LST := $(LIB_STATIC_LST)
+ifeq (Windows,$(HOST))
+  LIB_STATIC_OUT = $(LIBDIR)\lib$(LIB_STATIC).a
+  LIB_STATIC_LST = $(LIBDIR)\lib$(LIB_STATIC).lst
+else
+  LIB_STATIC_OUT = $(LIBDIR)/lib$(LIB_STATIC).a
+  LIB_STATIC_LST = $(LIBDIR)/lib$(LIB_STATIC).lst
+endif
+  LIB_OUT = $(LIB_STATIC_OUT)
+  LIB_LST = $(LIB_STATIC_LST)
 endif
 
 ifdef LIB_SHARED
-  LIB_SHARED_LST = $(OUTDIR)/lib$(LIB_SHARED).lst
+  LIB_SHARED_LST = $(LIBDIR)/lib$(LIB_SHARED).lst
   ifeq ($(SOEXT),dll)
-    LIB_SHARED_OUT = $(OUTDIR)/$(LIB_SHARED).$(SOEXT)
+    LIB_SHARED_OUT = $(LIBDIR)/$(LIB_SHARED).$(SOEXT)
     LDFLAGS = -Wl,--dll
   else
-    LIB_SHARED_OUT = $(OUTDIR)/lib$(LIB_SHARED).$(SOEXT)
+    LIB_SHARED_OUT = $(LIBDIR)/lib$(LIB_SHARED).$(SOEXT)
     LDFLAGS = -Wl,-soname,$(LIB_SHARED).so
   endif
   LIB_OUT += $(LIB_SHARED_OUT)
@@ -106,38 +125,77 @@ DEPDIRS_ALL:= $(DEPDIRS:%=%-all)
 
 DEPDIRS_CLEAN := $(DEPDIRS:%=%-clean)
 
-CLEAN_FILES := $(OFILES) $(DFILES) $(LIB_STATIC_OUT) $(LIB_SHARED_OUT) $(LIB_SHARED_LST) $(LIB_STATIC_LST)
+LFILES := $(LIB_STATIC_OUT) $(LIB_SHARED_OUT) $(LIB_SHARED_LST) \
+		  $(LIB_STATIC_LST) 
 
 ifeq (Windows,$(HOST))
-  CLEAN_FILES := $(subst /,\,$(CLEAN_FILES))
+  CLEAN_OFILES := $(strip $(subst /,\,$(OFILES)))
+  CLEAN_DFILES := $(strip $(subst /,\,$(DFILES)))
+  CLEAN_LFILES := $(strip $(subst /,\,$(LFILES)))
+  OUTDIR := $(subst /,\,$(OUTDIR))
+  INSTALLDIR := $(subst /,\,$(INSTALLDIR))
+  LIB_OUT_WIN := $(subst /,\,$(LIB_OUT))
+else
+  CLEAN_OFILES := $(strip $(OFILES))
+  CLEAN_DFILES := $(strip $(DFILES))
+  CLEAN_LFILES := $(strip $(LFILES))
 endif
 
-#$(info ~~~~~~~~~~~~~~~~~~~~~~~~~~)
-#$(info MAKEFILE_LIST = '$(MAKEFILE_LIST)')
-#$(info SRCDIR = '$(firstword $(SRCDIR))')
-#$(info ODIRS = '$(ODIRS)')
+#------------------------------------------------------------------------------ 
+# Make scripts debug
+#------------------------------------------------------------------------------ 
+
+$(call trace1,<lib.mk> ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~)
+$(call trace1,HOST = '$(HOST)')
+$(call trace1,DIRMODE = '$(DIRMODE)')
+$(call trace1,SHELL = '$(SHELL)')
+$(call trace2,OUTDIR = '$(OUTDIR)')
+$(call trace2,SRCDIR = '$(SRCDIR)')
+$(call trace3,CFILES = '$(CFILES)')
+$(call trace3,OFILES = '$(OFILES)')
+$(call trace3,ODIRS = '$(ODIRS)')
+$(call trace3,VERSION_H = '$(VERSION_H)')
 #$(info OS = '$(OS)')
-#$(info OSTYPE = '$(OSTYPE)')
 #$(info HOST = '$(HOST)')
 #$(info DIRMODE = '$(DIRMODE)')
+#$(info SHELL = '$(SHELL)')
+#$(info SRCDIR = '$(SRCDIR)')
+#$(info OUTDIR = '$(OUTDIR)')
+#$(info CFILES = '$(CFILES)')
+#$(info OFILES = '$(OFILES)')
+#$(info LIB_OUT = '$(LIB_OUT)')
+#$(info ODIRS = '$(ODIRS)')
+#$(info MAKEFILE_LIST = '$(MAKEFILE_LIST)')
+#$(info SET = '$(shell set)')
+#$(info LIB_STATIC = '$(LIB_STATIC)')
+#$(info LIB_STATIC_OUT = '$(LIB_STATIC_OUT)')
+#$(info CFILES_OUT = '$(CFILES_OUT)')
 #$(info MSYSTEM = '$(MSYSTEM)')
 #$(info MSYSCON = '$(MSYSCON)')
 #$(info MAKE_MODE = '$(MAKE_MODE)')
 #$(info INCPATH = '$(INCPATH)')
 #$(info INCPATH_WIN = '$(INCPATH_WIN)')
-#$(info LIBDIRS = '$(LIBDIRS)')
 #$(info abspath = '$(abspath .)')
 #$(info realpath = '$(realpath .)')
 #$(info CFLAGS = '$(CFLAGS)')
 #$(info HOME = '$(HOME)')
 #$(info HOMEPATH = '$(HOMEPATH)')
-#$(info CLEAN_FILES = '$(CLEAN_FILES)')
-#$(info ~~~~~~~~~~~~~~~~~~~~~~~~~~)
+$(call trace1,~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ </lib.mk>)
 
 all: $(LIB_OUT)
 
 clean: deps-clean
-	$(Q)$(RMALL) $(CLEAN_FILES)
+	$(Q)$(RMALL) $(CLEAN_LFILES)
+	$(Q)$(RMALL) $(CLEAN_DFILES)
+	$(Q)$(RMALL) $(CLEAN_OFILES)
+
+install: $(LIB_OUT)
+ifeq (Windows,$(HOST))
+	$(Q)$(CP) $(LIB_OUT_WIN) $(INSTALLDIR)
+else
+	$(Q)$(CP) $(LIB_OUT) $(INSTALLDIR)
+endif
+
 
 lib: $(LIB_OUT)
 
@@ -169,13 +227,16 @@ cleanRelease:
 # Library targets
 #------------------------------------------------------------------------------ 
 
-#$(LIB_STATIC_OUT): $(DEPDIRS_ALL) $(OFILES)
-$(LIB_STATIC_OUT): $(OFILES)
+$(LIB_STATIC_OUT): $(OFILES) 
 	$(ACTION) "AR: $@"
 ifeq ($(HOST),Cygwin)
 	$(Q)$(AR) $(ARFLAGS) $(subst \,\\,$(shell cygpath -w $@)) $(OFILES_WIN) > $(DEVNULL)
 else
+  ifeq ($(HOST),Windows)
+	$(foreach f,$(OFILES),$(shell $(AR) r $@ $(f)))
+  else
 	$(Q)$(AR) $(ARFLAGS) $@ $(OFILES) 1> $(DEVNULL)
+  endif
 endif
 
 $(LIB_SHARED_OUT): $(DEPDIRS_ALL) $(OFILES)
@@ -219,26 +280,26 @@ endif
 $(ODIRS):
 	$(ACTION) "Creating outdir: $@"
 ifeq ($(HOST),Windows)
-	$(Q)$(MKDIR) $(subst /,\,$@) 
-else
-	-$(Q)$(MKDIR) $@ 
-endif
-
-$(DDIRS):
-	$(ACTION) "Creating depdir: $@"
-ifeq ($(HOST),Windows)
-	$(Q)$(MKDIR) $(subst /,\,$@) 
+	$(Q)if not exist $(subst /,\,$@) $(MKDIR) $(subst /,\,$@)
 else
 	-$(Q)$(MKDIR) $@ 
 endif
 
 $(HFILES_OUT) $(CFILES_OUT) $(SFILES_OUT): | $(ODIRS)
 
-$(DDIRS) : | $(ODIRS) $(CFILES_OUT)
+$(DFILES): | $(ODIRS)
 
-$(DFILES): | $(DDIRS)
+$(OFILES): | $(ODIRS)
+
+#------------------------------------------------------------------------------ 
+# Compilation
+#------------------------------------------------------------------------------ 
 
 include $(SCRPTDIR)/cc.mk
+
+#------------------------------------------------------------------------------ 
+# Automatic dependencies
+#------------------------------------------------------------------------------ 
 
 #
 # FIXME: automatic dependencies are NOT included in Cygwin.
@@ -248,5 +309,4 @@ include $(SCRPTDIR)/cc.mk
 ifneq ($(HOST),Cygwin)
 -include $(DFILES)
 endif
-
 

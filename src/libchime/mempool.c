@@ -22,7 +22,6 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <pthread.h>
 #include <assert.h>
 #include <stdbool.h>
 
@@ -31,6 +30,8 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
+#else
+#include <pthread.h>
 #endif
 
 struct mempool;
