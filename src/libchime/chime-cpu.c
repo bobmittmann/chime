@@ -552,6 +552,7 @@ static int __var_open(const char * name)
 		return oid;
 	} 
 
+	DBG("Allocating variable!");
 	if ((var = obj_alloc()) == NULL) {
 		ERR("object allocation failed!");
 		return -1;

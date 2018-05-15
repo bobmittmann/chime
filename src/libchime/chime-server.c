@@ -647,15 +647,16 @@ static void __chime_sim_reset(void)
 	INF("clearing clock heap!");
 	/* get all events from the heap */
 	while (heap_extract_min(server.heap, NULL, &evt)) {
-		if (evt.oid != 0) {
-			DBG1("releasing object OID=%d node_id=%d event=%s",
-				 evt.node_id, evt.oid, __evt_opc_nm[evt.opc]);
-			obj_release(evt.oid);
+		if (evt.opc == CHIME_EVT_RCV) {
+			DBG("releasing object OID=%d node_id=%d event=%s",
+				 evt.buf.oid, evt.oid, __evt_opc_nm[evt.opc]);
+			obj_release(evt.buf.oid);
 		}
 	}
 
 	server.heap->clk = 0LL;
 
+	INF("reseting timer!");
 	__sim_timer_reset();
 }
 
@@ -2028,6 +2029,8 @@ int chime_server_start(const char * name)
 	__mutex_init(&server.mutex);
 	__mutex_lock(server.mutex);
 
+	INF("server='%s'", name);
+
 	if (!server.started) {
 
 		gettimeofday(&tv, NULL);
@@ -2088,7 +2091,9 @@ int chime_server_start(const char * name)
 
 			INF("allocating server shared structure...");
 			server.shared = obj_alloc();
+			/* Sanity check ... */
 			server.shared_oid = obj_oid(server.shared);
+			/* the first object must be 1 */
 			assert(server.shared_oid == SRV_SHARED_OID);
 			/* initialize shared structure */
 			__dir_lst_clear(&server.shared->dir);

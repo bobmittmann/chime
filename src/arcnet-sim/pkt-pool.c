@@ -116,6 +116,7 @@ int fx_pkt_decref(void * ptr)
 	struct obj * obj = (struct obj *)((uint32_t *)ptr - META_OFFS);
 	int oid;
 	int ret;
+	int ref;
 
 	assert(ptr != NULL);
 
@@ -126,13 +127,24 @@ int fx_pkt_decref(void * ptr)
 	assert(obj == &pkt_pool.obj[oid]);
 	assert(obj->meta.ref > 0);
 
-	if ((ret = --obj->meta.ref) == 0) { 
-		if (pkt_pool.head == __OID_VOID) 
-			pkt_pool.head = oid;
-		else {
-			pkt_pool.obj[pkt_pool.tail].next = oid;
+	ref = obj->meta.ref ;
+	if (ref > 0) {
+		if (--ref == 0) { 
+			if ((ret = --obj->meta.ref) == 0) { 
+				if (pkt_pool.head == __OID_VOID) 
+					pkt_pool.head = oid;
+				else {
+					pkt_pool.obj[pkt_pool.tail].next = oid;
+				}
+				pkt_pool.tail = oid;
+			}
 		}
-		pkt_pool.tail = oid;
+		/* write back */
+		obj->meta.ref = ref;
+		ret = ref;
+	} else {
+		/* this object is gone already!!! */
+		ret = -1;
 	}
 
 	__spin_unlock(pkt_pool.spinlock);

@@ -1094,7 +1094,7 @@ int fx_arcnet_sim_init(void)
 		.bits_per_byte = 11,
 		.bytes_max = 256,
 		.speed_bps = ARCNET_SPEED_BPS, /* bits per second */
-		.jitter = 0.0, /* seconds */
+		.max_jitter = 0.0, /* seconds */
 		.min_delay = 0.0,  /* minimum delay in seconds */
 		.nod_delay = 0.0,  /* per node delay in seconds */
 		.hist_en = false,

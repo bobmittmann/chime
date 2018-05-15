@@ -160,6 +160,7 @@ int chime_comm_write(int chan, const void * buf, size_t len)
 	}
 
 	/* allocate an frame */
+	DBG("Allocating COMM frame!");
 	if ((frm = obj_alloc()) == NULL) {
 		ERR("object allocation failed!");
 		__cpu_except(EXCEPT_OBJ_ALLOC_FAIL);

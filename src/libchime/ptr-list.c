@@ -123,8 +123,9 @@ void ptr_list_subtract(struct list * from, struct list * lst)
 		int key = lst->key[i];
 		int idx;
 
-		if ((idx = __key_lookup(from, key)) >= 0);
+		if ((idx = __key_lookup(from, key)) >= 0) {
 			__key_delete(from, idx);
+		}
 	}
 }
 

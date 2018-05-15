@@ -32,6 +32,7 @@ __thread struct {
 	} stat;
 } arcnet_drv;
 
+
 static inline void arcnet_pkt_free(struct arcnet_pkt * pkt)
 {
 	fx_pkt_free(pkt);

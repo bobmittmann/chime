@@ -52,7 +52,7 @@ int chime_cpu_create(float offs_ppm, float tc_ppm, void (* on_reset)(void))
 				break;
 			}
 
-			sprintf(node->name, "%s.%d", client.name, client.cpu_cnt);
+			snprintf(node->name, 63, "%s.%d", client.name, client.cpu_cnt);
 			node->offs_ppm = offs_ppm;
 			node->tc_ppm = tc_ppm;
 
@@ -146,7 +146,7 @@ int chime_cpu_run(float offs_ppm, float tc_ppm, void (* on_reset)(void))
 		return -1;
 	}
 
-	sprintf(node->name, "%s.%d", client.name, client.cpu_cnt);
+	snprintf(node->name, 63, "%s.%d", client.name, client.cpu_cnt);
 	node->offs_ppm = offs_ppm;
 	node->tc_ppm = tc_ppm;
 	node->c.xmt_mq = client.mqsrv;
@@ -236,13 +236,13 @@ int chime_client_start(const char * name)
 				break;
 			}
 
-			DBG1("server magic is %08X", client.srv_shared->magic);
+			DBG("server magic is %08X", client.srv_shared->magic);
 			if (client.srv_shared->magic != SRV_SHARED_MAGIC) {
 				ERR("invalid server magic number!");
 				break;
 			}
 
-			DBG1("CPU notification semaphore initialization");
+			DBG("CPU notification semaphore initialization");
 			if (__sem_init(&client.except_sem, 0, 0) < 0) {
 				ERR("__sem_init() failed: %s.", __strerr());
 				break;

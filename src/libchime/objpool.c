@@ -73,17 +73,28 @@ int obj_oid(void * ptr)
 {
 	struct objpool * pool = obj_mgr.pool;
 	struct obj * obj = (struct obj *)((uint32_t *)ptr - META_OFFS);
-	int oid;
+	unsigned int oid;
 
 	(void)pool;
 
 	assert(pool != NULL);
-	assert(ptr != NULL);
+
+	if (ptr == NULL) {
+		assert(ptr != NULL);
+//		WARN("Null pointer.", oid);
+	}
 
 	oid = obj->meta.oid;
 	
+	if (oid > pool->nmemb) {
+	//	WARN("invalid oid=%d", oid);
+		return -1;
+	}
+
 	assert(obj == &pool->obj[oid]);
 
+
+	/* convert from internal index */
 	return oid + 1;
 }
 
@@ -91,25 +102,38 @@ void * obj_getinstance_incref(int oid)
 {
 	struct objpool * pool = obj_mgr.pool;
 	struct obj * obj;
+	void * ret;
 
 	assert(pool != NULL);
 	assert(oid > 0);
 
+	/* XXX: convert to internal index */
+	oid--;
+
+	WARN("oid=%d", oid + 1);
+
 	/* get instance */
-	obj = &pool->obj[--oid];
+	obj = &pool->obj[oid];
 
 	__mutex_lock(obj_mgr.mutex);
 
+	//assert(obj->meta.ref > 0);
 	/* sanity check */
-	assert(obj->meta.ref > 0);
-	assert(obj->meta.oid == oid);
+	if (obj->meta.ref == 0) {
+		WARN("oid=%d", oid + 1);
+		ret = NULL;
+	} else {
+		assert(obj->meta.oid == oid);
 
-	/* increment object reference */
-	obj->meta.ref++;
+		/* increment object reference */
+		obj->meta.ref++;
+
+		ret = (void *)obj->data;
+	}
 
 	__mutex_unlock(obj_mgr.mutex);
 
-	return (void *)obj->data;
+	return ret;
 }
 
 void * obj_getinstance(int oid)
@@ -119,9 +143,13 @@ void * obj_getinstance(int oid)
 
 	assert(pool != NULL);
 	assert(oid > 0);
+	/* XXX: convert to internal index */
+	oid--;
 
+	WARN("oid=%d", oid + 1);
+	
 	/* get instance */
-	obj = &pool->obj[--oid];
+	obj = &pool->obj[oid];
 
 	/* sanity check */
 	assert(obj->meta.ref > 0);
@@ -133,7 +161,7 @@ void * obj_getinstance(int oid)
 void * obj_alloc(void)
 {
 	struct objpool * pool = obj_mgr.pool;
-	void * ret = NULL;
+	void * ret;
 	int oid;
 
 	assert(pool != NULL);
@@ -145,22 +173,29 @@ void * obj_alloc(void)
 		obj = &pool->obj[oid];
 
 		assert(obj->meta.oid == oid);
-		assert(obj->meta.ref == 0);
+		if (obj->meta.ref != 0) {
+			WARN("[%d].meta.ref=%d.", obj->meta.oid, (int16_t)obj->meta.ref);
+			DBG("opid=%d.", pool->head);
+			ret = NULL;
+		} else {	
 
-		DBG3("head=%d.", pool->head);
+			DBG3("head=%d.", pool->head);
 
-		if (pool->head == pool->tail) 
-			pool->head = pool->tail = __OID_VOID; /* Pool is empty */
-		else
-			pool->head = obj->next;
-		
-		DBG3("head=%d.", pool->head);
+			if (pool->head == pool->tail)
+				pool->head = pool->tail = __OID_VOID; /* Pool is empty */
+			else
+				pool->head = obj->next;
 
-		obj->meta.ref = 1; /* initialize reference counter */
+			DBG3("head=%d.", pool->head);
 
-		ret = (void *)obj->data;
+			obj->meta.ref = 1; /* initialize reference counter */
+
+			DBG("oid=%d.", oid + 1);
+			ret = (void *)obj->data;
+		}
 	} else {
 		pool->error++;
+		ret = NULL;
 	}
 
 	__mutex_unlock(obj_mgr.mutex);
@@ -177,6 +212,8 @@ int obj_incref(void * ptr)
 	(void)pool;
 	assert(pool != NULL);
 	assert(ptr != NULL);
+
+	WARN("oid=%d", obj->meta.oid + 1);
 
 	__mutex_lock(obj_mgr.mutex);
 
@@ -195,6 +232,7 @@ int obj_decref(void * ptr)
 	struct obj * obj = (struct obj *)((uint32_t *)ptr - META_OFFS);
 	int oid;
 	int ret;
+	int ref;
 
 	assert(pool != NULL);
 	assert(ptr != NULL);
@@ -203,19 +241,30 @@ int obj_decref(void * ptr)
 
 	oid = obj->meta.oid;
 
+	WARN("oid=%d", oid + 1);
+
 	assert(obj == &pool->obj[oid]);
 	assert(obj->meta.ref > 0);
 
 	DBG3("oid=%d ref=%d.", (oid + 1), obj->meta.ref);
 
-	if ((ret = --obj->meta.ref) == 0) { 
-		DBG3("oid=%d free.", (oid + 1));
-		if (pool->head == __OID_VOID) 
-			pool->head = oid;
-		else {
-			pool->obj[pool->tail].next = oid;
+	ref = obj->meta.ref;
+	if (ref > 0) {
+		if (--ref == 0) { 
+			DBG("oid=%d free.", (oid + 1));
+			if (pool->head == __OID_VOID) 
+				pool->head = oid;
+			else {
+				pool->obj[pool->tail].next = oid;
+			}
+			pool->tail = oid;
 		}
-		pool->tail = oid;
+		/* write back */
+		obj->meta.ref = ref;
+		ret = ref;
+	} else {
+		/* this object is gone already!!! */
+		ret = -1;
 	}
 
 	__mutex_unlock(obj_mgr.mutex);
@@ -228,29 +277,39 @@ int obj_release(int oid)
 	struct objpool * pool = obj_mgr.pool;
 	struct obj * obj;
 	int ret;
+	int ref;
 
 	assert(pool != NULL);
 	assert(oid > 0);
+	/* XXX: convert to internal index */
+	oid--;
 
-	obj = &pool->obj[--oid];
+	obj = &pool->obj[oid];
 
 	__mutex_lock(obj_mgr.mutex);
+
+	DBG("oid=%d ref=%d.", (oid + 1), obj->meta.ref);
 
 	assert(obj->meta.oid == oid);
 	assert(obj->meta.ref > 0);
 
-	DBG3("oid=%d ref=%d.", (oid + 1), obj->meta.ref);
-
-	if ((ret = --obj->meta.ref) == 0) { 
-
-		DBG3("oid=%d free.", (oid + 1));
-
-		if (pool->head == __OID_VOID) 
-			pool->head = oid;
-		else {
-			pool->obj[pool->tail].next = oid;
+	ref = obj->meta.ref;
+	if (ref > 0) {
+		if (--ref == 0) { 
+			DBG3("oid=%d free.", (oid + 1));
+			if (pool->head == __OID_VOID) 
+				pool->head = oid;
+			else {
+				pool->obj[pool->tail].next = oid;
+			}
+			pool->tail = oid;
 		}
-		pool->tail = oid;
+		/* write back */
+		obj->meta.ref = ref;
+		ret = ref;
+	} else { 
+		/* this object is gone already!!! */
+		ret = -1;
 	}
 
 	__mutex_unlock(obj_mgr.mutex);

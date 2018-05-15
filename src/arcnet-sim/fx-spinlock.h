@@ -45,7 +45,9 @@ static inline void __spinlock_destroy(__spinlock_t spinlock) {
 
 #if defined(_WIN32) 
 
+#ifndef _WIN32_WINNT 
 #define _WIN32_WINNT 0x0600
+#endif
 #include <windows.h>
 
 typedef CRITICAL_SECTION * __spinlock_t;
