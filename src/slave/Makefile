@@ -27,7 +27,11 @@ CFILES = slave.c
 
 LIBDIRS = ../libchime ../libsynclk
 
-LIBS = synclk chime pthread m
+LIBS = synclk chime m
+
+ifeq ($(HOST),Cygwin)
+LIBS += pthread 
+endif
 
 ifeq ($(HOST),Linux)
 LIBS += rt

@@ -30,3 +30,7 @@ _ReSharper*/
 .metadata*/
 /src/chronos/*.plt
 /src/chronos/*.png
+*.dat
+*.swp
+*~
+

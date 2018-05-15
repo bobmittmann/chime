@@ -26,9 +26,7 @@ static struct {
 		volatile uint32_t tail;
 		struct trace_entry * buf[TRACE_RING_SIZE];
 	} ring;
-} __trace = {
-	.mutex = PTHREAD_MUTEX_INITIALIZER,
-};
+} __trace;
 
 static inline struct trace_entry * __trace_alloc(void)
 {

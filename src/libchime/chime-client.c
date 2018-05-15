@@ -405,9 +405,9 @@ static void __cpu_stop(struct chime_node * node)
 
 	if (node->c.except == 0) {
 #ifdef _WIN32
-		if (memcmp(&node->c.thread, &self, sizeof(pthread_t)) == 0) {
-#else
 		if (node->c.thread != self) {
+#else
+		if (memcmp(&node->c.thread, &self, sizeof(pthread_t)) == 0) {
 #endif
 			DBG1("<%d> thread cancel...", node_id);
 			__thread_cancel(node->c.thread);

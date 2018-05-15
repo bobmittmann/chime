@@ -15,11 +15,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
-#include <pthread.h>
-#include <semaphore.h>
 #include <string.h>
 #include <stddef.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 
 #if defined(_WIN32) || defined(__CYGWIN__)
@@ -35,6 +34,7 @@
 #else
 #include <unistd.h>
 #include <mqueue.h>
+#include <pthread.h>
 #include <semaphore.h>
 #include <sys/mman.h>
 #include <sys/param.h>

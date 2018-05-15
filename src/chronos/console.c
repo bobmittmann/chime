@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <pthread.h>
+
 
 #include "console.h"
 
@@ -12,6 +12,7 @@
 #include <windows.h>
 #else
 #include <termios.h>
+#include <pthread.h>
 #endif
 
 static struct {
